@@ -6,6 +6,8 @@ A truly dynamic, runtime-extensible REST API server in Go that demonstrates how 
 - New API resources can be added while the server is running
 - No HTTP router rebuild required
 - No server restart needed
+- **Watch API** - Stream events in real-time with Server-Sent Events
+- **Controller Framework** - Event-driven business logic (Kubernetes-style)
 - Two ways to extend:
   1. **CRDs (Custom Resource Definitions)** - JSON POST to `/crds` endpoint
   2. **Plugins (Go .so files)** - Classic plugin system
@@ -39,6 +41,39 @@ go build -o apictl ./cmd/apictl
 ```
 
 See `QUICKSTART.md` for the 5-minute demo or run `./demo.sh`.
+
+## Watch API and Controllers
+
+Stream real-time events and implement event-driven business logic:
+
+**Terminal 1 - Watch for events:**
+```bash
+./apictl watch orders
+```
+
+**Terminal 2 - Create an order (in another terminal):**
+```bash
+./apictl create -f examples/order-1.json
+```
+
+**Terminal 1 - See events in real-time:**
+```
+EVENT: ADDED
+{
+  "id": "order-001",
+  "status": "draft",
+  ...
+}
+
+EVENT: MODIFIED
+{
+  "id": "order-001",
+  "status": "processing",  ← OrderController set this
+  ...
+}
+```
+
+The OrderController automatically processes orders, calculating totals and updating status. See `WATCH_ARCHITECTURE.md` and `WATCH_DEMO.md` for detailed explanation and complete walkthrough.
 
 ## Quick Start with Plugins
 

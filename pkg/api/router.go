@@ -37,15 +37,17 @@ type Router struct {
 	registry    Registry
 	scheme      Scheme
 	crdRegistry CRDRegistry
+	eventBus    EventBus
 	mux         *http.ServeMux
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry) *Router {
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
 		crdRegistry: crdRegistry,
+		eventBus:    eventBus,
 		mux:         http.NewServeMux(),
 	}
 }
@@ -160,7 +162,15 @@ func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource 
 
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
+// Supports ?watch=true for streaming events instead of listing.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client is requesting to watch events
+	if req.URL.Query().Get("watch") == "true" {
+		r.watch(w, req, resource)
+		return
+	}
+
+	// Normal list operation
 	objects, err := resource.Storage().List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -277,6 +287,59 @@ func (r *Router) delete(w http.ResponseWriter, req *http.Request, resource Resou
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// watch handles GET /api/{resource}?watch=true
+// Streams events as they occur using Server-Sent Events (SSE).
+//
+// This is the Watch API in action:
+// 1. Client connects with ?watch=true
+// 2. Handler subscribes to the event bus for this resource
+// 3. Events are streamed to client as they occur
+// 4. No polling needed - truly event-driven
+func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client supports Server-Sent Events (requires HTTP/1.1)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusNotAcceptable)
+		return
+	}
+
+	// Subscribe to events for this resource
+	sub := r.eventBus.Subscribe(resource.Name())
+	defer r.eventBus.Unsubscribe(sub)
+
+	// Set headers for Server-Sent Events
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Notify client that watch is starting
+	fmt.Fprintf(w, ":connected to watch stream for %s\n\n", resource.Name())
+	flusher.Flush()
+
+	// Stream events until client disconnects
+	for {
+		select {
+		case event := <-sub.Events:
+			// Serialize event to JSON
+			eventJSON, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("error marshalling event: %v", err)
+				continue
+			}
+
+			// Send as SSE
+			fmt.Fprintf(w, "event: %s\n", event.Type)
+			fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
+			flusher.Flush()
+
+		case <-req.Context().Done():
+			// Client disconnected
+			return
+		}
+	}
 }
 
 // routeCRD handles all /crds endpoints

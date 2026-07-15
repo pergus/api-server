@@ -16,6 +16,7 @@ type Server struct {
 	httpServer  *http.Server
 	port        int
 	crdRegistry CRDRegistry
+	eventBus    EventBus
 }
 
 // Config holds server configuration.
@@ -28,13 +29,15 @@ func NewServer(cfg Config) *Server {
 	registry := NewRegistry()
 	scheme := NewScheme()
 	crdRegistry := NewCRDRegistry()
-	router := NewRouter(registry, scheme, crdRegistry)
+	eventBus := NewEventBus()
+	router := NewRouter(registry, scheme, crdRegistry, eventBus)
 
 	return &Server{
 		registry:    registry,
 		scheme:      scheme,
 		router:      router,
 		crdRegistry: crdRegistry,
+		eventBus:    eventBus,
 		port:        cfg.Port,
 	}
 }
@@ -55,6 +58,12 @@ func (s *Server) Scheme() Scheme {
 // Called to manage Custom Resource Definitions.
 func (s *Server) CRDRegistry() CRDRegistry {
 	return s.crdRegistry
+}
+
+// EventBus returns the event bus.
+// Called by controllers and watch endpoints to subscribe to events.
+func (s *Server) EventBus() EventBus {
+	return s.eventBus
 }
 
 // Start begins listening.
@@ -107,7 +116,13 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // RegisterResource registers a resource at runtime.
 // This makes the resource immediately available without restarting the server.
+// Also attaches the event bus to the resource's storage so events are published.
 func (s *Server) RegisterResource(resource Resource) error {
+	// Attach event bus to storage if storage is MemoryStorage
+	if ms, ok := resource.Storage().(*MemoryStorage); ok {
+		ms.SetEventBus(s.eventBus, resource.Name())
+	}
+
 	err := s.registry.Register(resource)
 	if err == nil {
 		log.Printf("Registered resource: %s", resource.Name())
