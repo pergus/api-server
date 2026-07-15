@@ -319,6 +319,10 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 	fmt.Fprintf(w, ":connected to watch stream for %s\n\n", resource.Name())
 	flusher.Flush()
 
+	// Keep-alive ticker: send comment every 5 seconds to prevent timeout
+	keepAliveTicker := time.NewTicker(5 * time.Second)
+	defer keepAliveTicker.Stop()
+
 	// Stream events until client disconnects
 	for {
 		select {
@@ -333,6 +337,12 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 			// Send as SSE
 			fmt.Fprintf(w, "event: %s\n", event.Type)
 			fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
+			flusher.Flush()
+
+		case <-keepAliveTicker.C:
+			// Send keep-alive comment to prevent timeout
+			// SSE spec: lines starting with ':' are comments and ignored by clients
+			fmt.Fprintf(w, ":keep-alive\n\n")
 			flusher.Flush()
 
 		case <-req.Context().Done():
