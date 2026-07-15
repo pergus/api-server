@@ -1,0 +1,7 @@
+{
+  "kind": "User",
+  "id": "bob",
+  "name": "Bob Smith",
+  "email": "bob@example.com",
+  "is_active": true
+}

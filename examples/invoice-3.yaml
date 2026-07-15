@@ -1,0 +1,6 @@
+kind: Invoice
+id: inv-003
+customer: Acme Corp
+amount: 6000
+date: '2025-08-13'
+status: sent

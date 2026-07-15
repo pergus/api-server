@@ -1,0 +1,8 @@
+{
+  "kind": "Product",
+  "id": "prod-001",
+  "name": "Laptop",
+  "description": "High-performance laptop",
+  "price": 1299.99,
+  "stock": 50
+}

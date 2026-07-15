@@ -1,0 +1,36 @@
+# Binaries
+api-server
+apictl
+*.so
+
+# Build artifacts
+*.o
+*.a
+*.out
+
+# Plugin binaries
+plugins/invoices/*.so
+plugins/shipping/*.so
+
+# Test coverage
+coverage.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Temporary files
+*.tmp
+tmp/

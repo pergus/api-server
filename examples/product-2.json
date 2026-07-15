@@ -1,0 +1,8 @@
+{
+  "kind": "Product",
+  "id": "prod-002",
+  "name": "Mouse",
+  "description": "Wireless mouse",
+  "price": 29.99,
+  "stock": 200
+}

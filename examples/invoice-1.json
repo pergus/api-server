@@ -1,0 +1,8 @@
+{
+  "kind": "Invoice",
+  "id": "inv-001",
+  "customer": "Acme Corp",
+  "amount": 5000.00,
+  "date": "2025-07-15",
+  "status": "sent"
+}

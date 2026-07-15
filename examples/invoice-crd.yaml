@@ -1,0 +1,31 @@
+apiVersion: api.example.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: invoices.example.io
+spec:
+  group: example.io
+  version: v1
+  kind: Invoice
+  plural: invoices
+  schema:
+    properties:
+      id:
+        type: string
+        description: Unique invoice identifier
+      customer:
+        type: string
+        description: Customer name
+      amount:
+        type: number
+        description: Invoice amount in USD
+      date:
+        type: string
+        description: Invoice date (ISO 8601 format)
+      status:
+        type: string
+        enum:
+          - draft
+          - sent
+          - paid
+          - overdue
+        description: Current invoice status

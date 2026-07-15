@@ -1,0 +1,8 @@
+{
+  "kind": "Order",
+  "id": "order-002",
+  "customer_id": "bob",
+  "total": 29.99,
+  "status": "processing",
+  "created_at": "2025-07-15T11:15:00Z"
+}
