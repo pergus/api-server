@@ -34,3 +34,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 tmp/
+
+# Go workspace
+go.work
+go.work.sum
