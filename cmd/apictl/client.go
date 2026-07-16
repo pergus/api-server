@@ -396,9 +396,9 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 					default:
 					}
 				}
-			} else if line != "" && !strings.HasPrefix(line, ":") {
-				// Non-empty, non-comment line we don't recognize
-				// Log but continue parsing
+			} else if line != "" {
+				// Non-comment lines (not starting with ':') are skipped
+				_ = strings.HasPrefix(line, ":")
 			}
 			// Ignore empty lines and comments (lines starting with :)
 		}

@@ -25,6 +25,7 @@ help:
 	@echo "  make install-deps   Download Go dependencies"
 	@echo "  make fmt            Format code"
 	@echo "  make lint           Run go vet"
+	@echo "  make staticcheck    Run staticcheck linter"
 	@echo "  make deadcode       Check for dead code"
 	@echo "  make help           Show this help message"
 	@echo ""
@@ -89,6 +90,11 @@ lint:
 	$(GO) vet ./...
 	@echo "✓ Linting complete"
 
+staticcheck:
+	@echo "Running staticcheck..."
+	staticcheck ./...
+	@echo "✓ Staticcheck complete"
+
 deadcode:
 	@echo "Checking for dead code..."
 	deadcode ./...
@@ -143,7 +149,7 @@ info:
 	@grep "^module" go.mod
 
 # Verify targets
-verify: build test lint deadcode
+verify: build test lint staticcheck deadcode
 	@echo "✓ Verification complete - project is healthy!"
 
 # Setup plugins directory (for original plugin system)
@@ -216,6 +222,6 @@ help-quickstart:
 
 # Phony targets that don't correspond to files
 .PHONY: help build server client all clean run run-server demo test test-coverage \
-        fmt lint deadcode install-deps clean-all quickstart dev info verify setup-plugins \
+        fmt lint staticcheck deadcode install-deps clean-all quickstart dev info verify setup-plugins \
         prepare-demo api-resources api-versions create-crd get-invoices create-invoice \
         integration-flow docker-build docker-run help-quickstart

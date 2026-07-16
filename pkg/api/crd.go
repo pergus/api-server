@@ -8,19 +8,11 @@ import (
 // CRDDefinition represents a Custom Resource Definition.
 // This is how the API server allows arbitrary new resources to be registered at runtime.
 type CRDDefinition struct {
-	Group    string                 `json:"group"`
-	Version  string                 `json:"version"`
-	Kind     string                 `json:"kind"`
-	Plural   string                 `json:"plural"`
-	Schema   map[string]interface{} `json:"schema"`
-	metadata CRDMetadata            `json:"-"`
-}
-
-// CRDMetadata holds metadata about a CRD.
-type CRDMetadata struct {
-	Name      string
-	FullName  string // e.g., "invoices.example.io"
-	CreatedAt string
+	Group   string                 `json:"group"`
+	Version string                 `json:"version"`
+	Kind    string                 `json:"kind"`
+	Plural  string                 `json:"plural"`
+	Schema  map[string]interface{} `json:"schema"`
 }
 
 // Validate checks if the CRD definition is valid.
