@@ -1,8 +1,8 @@
 .PHONY: help build server client all clean run run-server demo test install-deps fmt lint
 
 # Variables
-BINARY_SERVER := api-server
-BINARY_CLIENT := apictl
+BINARY_SERVER := bin/api-server
+BINARY_CLIENT := bin/apictl
 GO := go
 GOFLAGS := -v
 COVERAGE_FILE := coverage.out

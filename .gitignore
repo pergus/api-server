@@ -1,6 +1,6 @@
 # Binaries
-api-server
-apictl
+bin/api-server
+bin/apictl
 *.so
 
 # Build artifacts
