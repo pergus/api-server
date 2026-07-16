@@ -287,36 +287,18 @@ Check that:
 
 The server logs plugin loading. Watch the logs to see if plugins are detected.
 
-## Build Targets
+## Architecture
 
-### Source Files
+The project is organized into the following components:
 
-```
-cmd/server/main.go              ~150 lines
-pkg/api/router.go               ~250 lines
-pkg/api/registry.go             ~120 lines
-pkg/api/scheme.go               ~80 lines
-pkg/api/server.go               ~100 lines
-pkg/api/storage.go              ~150 lines
-pkg/api/resource.go             ~30 lines
-pkg/api/middleware.go           ~100 lines
-pkg/api/types.go                ~50 lines
-pkg/plugins/loader.go           ~200 lines
-pkg/plugins/interface.go        ~30 lines
-pkg/resources/users.go          ~50 lines
-pkg/resources/products.go       ~50 lines
-pkg/resources/orders.go         ~50 lines
-plugins/invoices/main.go        ~130 lines
-```
+- **cmd/** - Command-line tools (api-server, apictl)
+- **pkg/api/** - Core API framework (router, registry, CRD system)
+- **pkg/controllers/** - Controller framework for event reconciliation
+- **pkg/resources/** - Built-in resource implementations
+- **pkg/plugins/** - Plugin system for runtime extensibility
+- **plugins/** - Plugin implementations
 
-Total: ~1,600 lines of Go code
-
-### Binary Sizes
-
-- Server binary: ~12 MB
-- Invoices plugin: ~9 MB
-
-(These sizes include Go runtime. Not heavily optimized.)
+See FILE_REFERENCE.md for a complete file listing and descriptions.
 
 ## Development
 
