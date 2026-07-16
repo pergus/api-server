@@ -26,7 +26,7 @@ CORE IMPLEMENTATION (1,900+ lines)
 │
 ├── pkg/api/dynamic.go (180 lines)
 │   ├── DynamicObject for schema-less data
-│   ├── SimpleDynamicResource wrapper
+│   ├── DynamicResource wrapper
 │   ├── Custom JSON marshalling
 │   └── Metadata handling
 │

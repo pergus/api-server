@@ -196,7 +196,7 @@ If the resource is not found, returns 404. If registered, processes the request.
 
 When a CRD is submitted:
 1. Validate the definition
-2. Create a `SimpleDynamicResource` wrapping the CRD
+2. Create a `DynamicResource` wrapping the CRD
 3. Register in the Resource Registry
 4. Register in the Scheme (for object creation)
 5. Expose via `/api/{plural}` endpoints

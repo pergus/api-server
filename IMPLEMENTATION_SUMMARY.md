@@ -23,7 +23,7 @@ This document summarizes the extensions made to the dynamic API server to add fu
 
 **Components:**
 - `DynamicObject` struct - Generic container for any JSON data
-- `SimpleDynamicResource` - Wraps CRD to provide Resource interface
+- `DynamicResource` - Wraps CRD to provide Resource interface
 - Custom JSON marshal/unmarshal
 
 **Features:**
@@ -43,7 +43,7 @@ This document summarizes the extensions made to the dynamic API server to add fu
 
 **How It Works:**
 1. POST /crds with CRD definition
-2. Server validates and creates SimpleDynamicResource
+2. Server validates and creates DynamicResource
 3. Registers in three places:
    - CRDRegistry (for CRD management)
    - Resource Registry (for runtime lookup)

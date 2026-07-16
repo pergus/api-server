@@ -82,12 +82,12 @@ Example unmarshalling:
 }
 ```
 
-### 4. SimpleDynamicResource
+### 4. DynamicResource
 
 Wraps a CRD to provide the Resource interface:
 
 ```go
-type SimpleDynamicResource struct {
+type DynamicResource struct {
     crd     *CRDDefinition
     storage Storage
 }
@@ -120,7 +120,7 @@ curl -X POST http://localhost:8080/crds \
 **Server actions**:
 1. Validate CRD definition
 2. Register in CRDRegistry
-3. Create SimpleDynamicResource
+3. Create DynamicResource
 4. Register in main Resource Registry
 5. Register object factory in Scheme
 6. Respond 201 Created
@@ -278,10 +278,10 @@ Flow:
 3. Infers plural: "invoices"
 4. POSTs to `http://localhost:8080/api/invoices`
 5. Server:
-   - Looks up "invoices" in Registry → finds SimpleDynamicResource
+   - Looks up "invoices" in Registry → finds DynamicResource
    - Calls Scheme.New("invoices") → returns DynamicObject
    - Unmarshals JSON into DynamicObject
-   - Stores in SimpleDynamicResource.Storage()
+   - Stores in DynamicResource.Storage()
    - Returns ID
 6. Client displays: "invoices created: inv-001"
 
@@ -298,7 +298,7 @@ Flow:
 4. POSTs to `http://localhost:8080/crds`
 5. Server:
    - Validates CRD definition
-   - Creates SimpleDynamicResource
+   - Creates DynamicResource
    - Registers in all registries
    - Returns endpoint path
 6. Client displays: "CRD applied: invoices.example.io"

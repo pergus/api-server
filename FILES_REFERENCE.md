@@ -71,7 +71,7 @@ Complete index of all files in the extended dynamic API server project.
 ### Dynamic Objects
 - **`pkg/api/dynamic.go`** (~180 lines) - Generic object representation
   - DynamicObject struct for schema-less data
-  - SimpleDynamicResource wrapper for CRDs
+  - DynamicResource wrapper for CRDs
   - Custom JSON marshalling/unmarshalling
   - Metadata handling (ID extraction)
 
