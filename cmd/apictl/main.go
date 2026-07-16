@@ -49,16 +49,16 @@ USAGE:
   apictl <command> [options]
 
 COMMANDS:
-  api-resources        List all available resources
-  api-versions         List all API versions
-  plugins              List loaded plugins and count
-  get <resource>       List all objects of a resource type
-  get <resource> <id>  Get a specific object
-  create -f <file>     Create a resource from a file
+  api-resources          List all available resources
+  api-versions           List all API versions
+  plugins                List loaded plugins and count
+  get <resource>         List all objects of a resource type
+  get <resource> <id>    Get a specific object
+  create -f <file>       Create a resource from a file
   delete <resource> <id> Delete a resource
-  apply -f <file>      Apply a CRD or create/update a resource
-  explain <resource>   Show resource schema
-  watch <resource>     Stream events for a resource
+  apply -f <file>        Apply a CRD or create/update a resource
+  explain <resource>     Show resource schema
+  watch <resource>       Stream events for a resource
 
 EXAMPLES:
   apictl api-resources
