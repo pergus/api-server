@@ -320,13 +320,49 @@ Total: ~1,600 lines of Go code
 
 ## Development
 
+### Makefile Targets
+
+The project includes a comprehensive Makefile for common development tasks:
+
+```bash
+# Build binaries
+make build
+
+# Run the server
+make run
+
+# Run tests
+make test
+
+# Generate coverage report
+make test-coverage
+
+# Format code
+make fmt
+
+# Lint code
+make lint
+
+# Advanced linting (requires install)
+make staticcheck
+
+# Check for dead code (requires install)
+make deadcode
+
+# Run all verification checks
+make verify
+
+# Show all available targets
+make help
+```
+
 ### Running Tests
 
 ```bash
 go test ./...
 ```
 
-(No tests provided in this example, but the structure supports them.)
+Comprehensive tests are included with 79%+ coverage across core packages.
 
 ### Formatting Code
 
@@ -339,6 +375,44 @@ go fmt ./...
 ```bash
 go vet ./...
 ```
+
+### Optional Code Quality Tools
+
+The project includes Makefile targets for advanced static analysis. These tools are **optional** but recommended for code quality:
+
+#### Installing Optional Tools
+
+**staticcheck** - Advanced Go linter with additional checks:
+
+```bash
+go install honnef.co/go/tools/cmd/staticcheck@latest
+```
+
+**deadcode** - Find unused code:
+
+```bash
+go install golang.org/x/tools/cmd/deadcode@latest
+```
+
+#### Running Code Quality Checks
+
+Once installed, run the tools via Make:
+
+```bash
+# Run just staticcheck
+make staticcheck
+
+# Run just deadcode
+make deadcode
+
+# Run all quality checks (build, test, lint, staticcheck, deadcode)
+make verify
+```
+
+Without these tools installed, you can still run:
+- `make lint` - Uses go vet (built-in)
+- `make test` - Run tests
+- `make build` - Build binaries
 
 ## Performance
 
