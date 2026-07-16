@@ -18,11 +18,11 @@ make demo
 ## Build Targets
 
 ### `make build`
-Builds both the server and kubectl-lite client binaries.
+Builds both the server and apitcl client binaries.
 
 ```bash
 make build
-# Output: ✓ Build complete: server and kubectl-lite
+# Output: ✓ Build complete: server and apitcl
 ```
 
 ### `make server`
@@ -34,11 +34,11 @@ make server
 ```
 
 ### `make client`
-Builds only the kubectl-lite client binary.
+Builds only the apitcl client binary.
 
 ```bash
 make client
-# Creates: ./kubectl-lite
+# Creates: ./apitcl
 ```
 
 ### `make all`
@@ -129,7 +129,7 @@ Removes build artifacts and temporary files.
 
 ```bash
 make clean
-# Removes: server, kubectl-lite, coverage.out, coverage.html
+# Removes: server, apitcl, coverage.out, coverage.html
 ```
 
 ### `make clean-all`
@@ -187,7 +187,7 @@ Lists all available resources.
 
 ```bash
 make api-resources
-# Runs: ./kubectl-lite api-resources
+# Runs: ./apitcl api-resources
 ```
 
 ### `make api-versions`
@@ -195,7 +195,7 @@ Lists all API groups.
 
 ```bash
 make api-versions
-# Runs: ./kubectl-lite api-versions
+# Runs: ./apitcl api-versions
 ```
 
 ### `make create-crd`
@@ -203,7 +203,7 @@ Creates the Invoice CRD from the example.
 
 ```bash
 make create-crd
-# Runs: ./kubectl-lite apply -f examples/invoice-crd.yaml
+# Runs: ./apitcl apply -f examples/invoice-crd.yaml
 # Requires: running server
 ```
 
@@ -212,7 +212,7 @@ Creates a sample invoice object.
 
 ```bash
 make create-invoice
-# Runs: ./kubectl-lite create -f examples/invoice-1.json
+# Runs: ./apitcl create -f examples/invoice-1.json
 # Requires: running server, CRD created
 ```
 
@@ -221,7 +221,7 @@ Lists all invoice objects.
 
 ```bash
 make get-invoices
-# Runs: ./kubectl-lite get invoices
+# Runs: ./apitcl get invoices
 # Requires: running server, CRD created
 ```
 

@@ -302,7 +302,7 @@ curl -X POST http://localhost:8080/crds \
   }'
 ```
 
-### Or via kubectl-lite
+### Or via apitcl
 
 ```bash
 ./apictl apply -f examples/invoice-crd.yaml
@@ -343,7 +343,7 @@ GET /apis/{group}         - List resources in group
 GET /apis/{group}/{version} - List resources in group/version
 ```
 
-## kubectl-lite Client
+## apitcl Client
 
 A discovery-based CLI that learns about resources from the server:
 
@@ -494,7 +494,7 @@ api-server/
 ├── go.mod                          # Go module file
 ├── cmd/
 │   ├── server/main.go              # Server entry point
-│   └── kubectl-lite/               # CLI client
+│   └── apitcl/               # CLI client
 │       ├── main.go
 │       ├── client.go
 │       └── commands.go

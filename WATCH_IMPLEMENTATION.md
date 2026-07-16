@@ -114,7 +114,7 @@ The Watch API and Controller Framework extends the dynamic API server with Kuber
 - **cmd/apictl/main.go**
   - Added "watch" command to switch statement
   - Updated usage text
-  - Changed "kubectl-lite" references to "apictl"
+  - Changed "apitcl" references to "apictl"
 
 - **cmd/apictl/commands.go**
   - Added cmdWatch() function

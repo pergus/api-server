@@ -88,20 +88,20 @@ Complete index of all files in the extended dynamic API server project.
 - **`plugins/invoices/main.go`** (~130 lines) - Example invoice plugin
 - **`plugins/build.sh`** - Script to build all plugins
 
-## kubectl-lite Client (NEW)
+## apitcl Client (NEW)
 
 ### Client Implementation
-- **`cmd/kubectl-lite/main.go`** (~50 lines) - CLI entry point and help
+- **`cmd/apitcl/main.go`** (~50 lines) - CLI entry point and help
   - Command parsing
   - Usage information
 
-- **`cmd/kubectl-lite/client.go`** (~180 lines) - HTTP API client
+- **`cmd/apitcl/client.go`** (~180 lines) - HTTP API client
   - REST communication with server
   - Discovery methods
   - CRUD operations
   - CRD management
 
-- **`cmd/kubectl-lite/commands.go`** (~300 lines) - Command implementations
+- **`cmd/apitcl/commands.go`** (~300 lines) - Command implementations
   - `api-resources` - List resources
   - `api-versions` - List API groups
   - `get` - Retrieve resources
@@ -153,7 +153,7 @@ Complete index of all files in the extended dynamic API server project.
   - CRD system components
   - Lifecycle of CRDs
   - API discovery design
-  - kubectl-lite architecture
+  - apitcl architecture
   - Thread safety analysis
   - Performance characteristics
 
@@ -162,7 +162,7 @@ Complete index of all files in the extended dynamic API server project.
   - Build procedures
   - Running examples
   - Testing via curl
-  - Using kubectl-lite client
+  - Using apitcl client
   - Troubleshooting
 
 - **`README.md`** (~470 lines) - Main project documentation
@@ -170,7 +170,7 @@ Complete index of all files in the extended dynamic API server project.
   - Quick start (both CRD and plugin approaches)
   - Using the API
   - CRD system explanation
-  - kubectl-lite usage
+  - apitcl usage
   - Creating plugins
   - Architecture details
 
@@ -197,7 +197,7 @@ api-server/
 ├── cmd/
 │   ├── server/
 │   │   └── main.go                    (Server entry)
-│   └── kubectl-lite/
+│   └── apitcl/
 │       ├── main.go                    (CLI entry)
 │       ├── client.go                  (HTTP client)
 │       └── commands.go                (CLI commands)
@@ -262,7 +262,7 @@ api-server/
 
 ### Binary Sizes
 - Server: ~12 MB (includes Go runtime)
-- kubectl-lite: ~8.7 MB (includes Go runtime)
+- apitcl: ~8.7 MB (includes Go runtime)
 
 ## How to Use This Reference
 
@@ -291,7 +291,7 @@ api-server/
    - Flexible JSON handling
    - Kubernetes-like object representation
 
-4. **cmd/kubectl-lite/client.go** - Discovery-based client
+4. **cmd/apitcl/client.go** - Discovery-based client
    - Shows how clients discover APIs
    - Demonstrates no hardcoded resources
    - REST API interaction pattern
@@ -306,7 +306,7 @@ api-server/
 ### Build Everything
 ```bash
 go build -o server ./cmd/server
-go build -o kubectl-lite ./cmd/kubectl-lite
+go build -o apitcl ./cmd/apitcl
 ```
 
 ### Run Server
@@ -321,25 +321,25 @@ go build -o kubectl-lite ./cmd/kubectl-lite
 
 ### Manual Testing
 ```bash
-./kubectl-lite api-resources
-./kubectl-lite apply -f examples/invoice-crd.yaml
-./kubectl-lite create -f examples/invoice-1.json
-./kubectl-lite get invoices
+./apitcl api-resources
+./apitcl apply -f examples/invoice-crd.yaml
+./apitcl create -f examples/invoice-1.json
+./apitcl get invoices
 ```
 
 ## Testing Checklist
 
 - [ ] Server builds without errors
-- [ ] kubectl-lite builds without errors
+- [ ] apitcl builds without errors
 - [ ] Server starts and listens on port 8080
 - [ ] `/api` endpoint returns built-in resources
 - [ ] `/crds` POST creates new CRD
 - [ ] `/crds` GET lists CRDs
 - [ ] `/apis` lists API groups
 - [ ] New resource available after CRD creation
-- [ ] kubectl-lite discovers resources dynamically
-- [ ] kubectl-lite create works with CRD resources
-- [ ] kubectl-lite get lists CRD resources
+- [ ] apitcl discovers resources dynamically
+- [ ] apitcl create works with CRD resources
+- [ ] apitcl get lists CRD resources
 - [ ] CRD deletion removes resource from discovery
 
 ## Notes

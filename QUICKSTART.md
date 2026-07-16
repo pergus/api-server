@@ -117,7 +117,7 @@ users
 
 - ✓ **No server restart** - Resources appear and disappear at runtime
 - ✓ **No recompilation** - Single binary serves all resources
-- ✓ **Discovery-based client** - `kubectl-lite` finds resources dynamically
+- ✓ **Discovery-based client** - `apitcl` finds resources dynamically
 - ✓ **Generic handlers** - One handler works for all resource types
 - ✓ **Dynamic objects** - Resources don't need compiled Go structs
 
@@ -196,7 +196,7 @@ The `examples/` directory contains:
 - Verify required fields: group, version, kind, plural
 - Look at server logs for validation errors
 
-### kubectl-lite get crds fails
+### apitcl get crds fails
 - The CRD endpoints are `/crds`, not `/api/crds`
 - Try: `curl http://localhost:8080/crds`
 
@@ -207,7 +207,7 @@ The `examples/` directory contains:
 3. **Resources registered** in thread-safe Registry
 4. **Request comes in** → lookup resource → dispatch to handler
 5. **CRD registered** → creates new Resource → becomes available immediately
-6. **kubectl-lite** discovers available resources via API
+6. **apitcl** discovers available resources via API
 7. **No restart ever needed** - resources appear and disappear at runtime
 
 This demonstrates Kubernetes-style extensibility!

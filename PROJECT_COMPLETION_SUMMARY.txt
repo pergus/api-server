@@ -8,7 +8,7 @@ PROJECT OBJECTIVES: ✓ ALL COMPLETED
 2. ✓ Support Custom Resource Definition endpoints
 3. ✓ Implement generic DynamicObject representation
 4. ✓ Add Kubernetes-style API discovery
-5. ✓ Build minimal kubectl-lite client
+5. ✓ Build minimal apitcl client
 6. ✓ Support declarative YAML files
 7. ✓ Demonstrate without restart/recompilation
 8. ✓ Show relationship between architecture components
@@ -40,15 +40,15 @@ CORE IMPLEMENTATION (1,900+ lines)
     └── Handler methods for CRD management
 
 CLI CLIENT (530 lines)
-├── cmd/kubectl-lite/main.go (50 lines)
+├── cmd/apitcl/main.go (50 lines)
 │   └── Command-line interface
 │
-├── cmd/kubectl-lite/client.go (180 lines)
+├── cmd/apitcl/client.go (180 lines)
 │   ├── HTTP communication
 │   ├── REST API operations
 │   └── Discovery methods
 │
-└── cmd/kubectl-lite/commands.go (300 lines)
+└── cmd/apitcl/commands.go (300 lines)
     ├── api-resources command
     ├── api-versions command
     ├── get command (list & specific)
@@ -120,7 +120,7 @@ KEY FEATURES DEMONSTRATED
    ✓ Metadata handling (Kubernetes-like)
 
 8. DISCOVERY-BASED CLIENT
-   ✓ kubectl-lite learns resources from server
+   ✓ apitcl learns resources from server
    ✓ No hardcoded resource names
    ✓ Works with any resource type
    ✓ YAML and JSON support
@@ -131,7 +131,7 @@ TESTING COVERAGE
 
 ✓ Build Tests (2/2)
   • Server binary builds successfully
-  • kubectl-lite binary builds successfully
+  • apitcl binary builds successfully
 
 ✓ Server Tests (4/4)
   • Server starts and listens
@@ -198,19 +198,19 @@ QUICK START (5 minutes):
 
 1. Build:
    go build -o server ./cmd/server
-   go build -o kubectl-lite ./cmd/kubectl-lite
+   go build -o apitcl ./cmd/apitcl
 
 2. Terminal 1 - Start server:
    ./server
 
 3. Terminal 2 - Run demo:
-   ./kubectl-lite api-resources
-   ./kubectl-lite apply -f examples/invoice-crd.yaml
-   ./kubectl-lite api-resources        # Notice invoices appears!
-   ./kubectl-lite create -f examples/invoice-1.json
-   ./kubectl-lite get invoices
-   ./kubectl-lite delete crd invoices.example.io
-   ./kubectl-lite api-resources        # Notice invoices is gone!
+   ./apitcl api-resources
+   ./apitcl apply -f examples/invoice-crd.yaml
+   ./apitcl api-resources        # Notice invoices appears!
+   ./apitcl create -f examples/invoice-1.json
+   ./apitcl get invoices
+   ./apitcl delete crd invoices.example.io
+   ./apitcl api-resources        # Notice invoices is gone!
 
 OR RUN AUTOMATED DEMO:
    ./demo.sh
@@ -268,7 +268,7 @@ FILE STATISTICS
 ================================================================================
 
 Source Code:
-  • New files: 5 (crd.go, dynamic.go, kubectl-lite/* )
+  • New files: 5 (crd.go, dynamic.go, apitcl/* )
   • Modified files: 6 (server.go, router.go, build.md, readme.md, go.mod)
   • Lines added: ~1,900
   • Total framework: ~2,500 lines
