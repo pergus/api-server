@@ -200,6 +200,37 @@ func (c *Client) DeleteCRD(crdName string) error {
 	return err
 }
 
+// ListPlugins lists all loaded plugins.
+func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
+	resp, err := c.get("/plugins")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, 0, err
+	}
+
+	plugins, ok := result["plugins"].([]interface{})
+	if !ok {
+		return []map[string]interface{}{}, 0, nil
+	}
+
+	count := 0
+	if v, ok := result["count"].(float64); ok {
+		count = int(v)
+	}
+
+	res := make([]map[string]interface{}, 0, len(plugins))
+	for _, plugin := range plugins {
+		if m, ok := plugin.(map[string]interface{}); ok {
+			res = append(res, m)
+		}
+	}
+	return res, count, nil
+}
+
 // Helper methods
 
 func (c *Client) get(path string) ([]byte, error) {

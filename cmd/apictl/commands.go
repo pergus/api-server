@@ -51,6 +51,31 @@ func cmdAPIVersions(c *Client) {
 	w.Flush()
 }
 
+// cmdPlugins lists all loaded plugins
+func cmdPlugins(c *Client) {
+	plugins, count, err := c.ListPlugins()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Loaded Plugins: %d\n", count)
+	if len(plugins) == 0 {
+		fmt.Println("No plugins loaded")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tPATH\tLOADED")
+	for _, p := range plugins {
+		name, _ := p["name"].(string)
+		path, _ := p["path"].(string)
+		loaded, _ := p["loaded"].(string)
+		fmt.Fprintf(w, "%s\t%s\t%s\n", name, path, loaded)
+	}
+	w.Flush()
+}
+
 // cmdGet lists or retrieves a resource
 func cmdGet(c *Client, args []string) {
 	if len(args) == 0 {

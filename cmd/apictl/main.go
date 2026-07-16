@@ -21,6 +21,8 @@ func main() {
 		cmdAPIResources(client)
 	case "api-versions":
 		cmdAPIVersions(client)
+	case "plugins":
+		cmdPlugins(client)
 	case "get":
 		cmdGet(client, args)
 	case "create":
@@ -49,6 +51,7 @@ USAGE:
 COMMANDS:
   api-resources        List all available resources
   api-versions         List all API versions
+  plugins              List loaded plugins and count
   get <resource>       List all objects of a resource type
   get <resource> <id>  Get a specific object
   create -f <file>     Create a resource from a file

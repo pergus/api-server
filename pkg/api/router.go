@@ -61,6 +61,9 @@ func (r *Router) Setup() {
 	r.mux.HandleFunc("/apis", r.discoverAPIs)
 	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
 
+	// Plugin endpoint
+	r.mux.HandleFunc("/plugins", r.listPlugins)
+
 	// Catch-all handler for all resource and CRD operations
 	r.mux.HandleFunc("/", r.route)
 }
@@ -472,6 +475,23 @@ func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
 		"group":     group,
 		"version":   version,
 		"resources": resources,
+	})
+}
+
+// listPlugins handles GET /plugins
+// Returns information about loaded plugins (framework endpoint for future enhancement)
+func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// For now, return a simple response structure
+	// In the future, this will be connected to the plugin loader
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"plugins": []interface{}{},
+		"count":   0,
 	})
 }
 
