@@ -172,26 +172,6 @@ Each resource has its own Storage:
    - Loaded dynamically
    - Become immediately available
 
-## How This Mirrors Kubernetes
-
-| Aspect | This Project | Kubernetes |
-|--------|--------------|-----------|
-| Resources | User, Product, Invoice | Pod, Service, Deployment |
-| Resource Interface | api.Resource | metav1.Object |
-| Registry | Registry | API Server resource registry |
-| Scheme | Scheme | scheme.Scheme |
-| Extensibility | Plugins | CRDs (Custom Resource Definitions) |
-| Generic Routing | router | API Server request handler |
-| Storage | Storage interface | etcd + storage abstraction |
-
-When you apply a CRD in Kubernetes:
-1. It's registered with the API server
-2. It appears in discovery
-3. Full CRUD works immediately
-4. No API server restart
-
-This project demonstrates the same thing.
-
 ## Complete Example
 
 ### Start Server
@@ -308,14 +288,14 @@ The architecture supports all of these.
 
 ## Conclusion
 
-This project demonstrates how Kubernetes achieves its legendary extensibility:
+This project demonstrates how the API-server achieves its extensibility:
 - Generic request handling
 - Runtime resource registration
 - Interface-based design
 - Thread-safe registries
 - No recompilation for new resources
 
-You can add new API capabilities while the system is running, exactly like Kubernetes does with CRDs.
+You can add new API capabilities while the system is running.
 
 The key insight: **Generic routing is more extensible than generated routing.**
 

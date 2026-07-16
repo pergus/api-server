@@ -461,6 +461,5 @@ This is correct - each update generates an event.
 3. **Asynchronous** - Events processed in background
 4. **Event-driven** - Business logic responds to events
 5. **Scalable** - One update triggers many reactions
-6. **Kubernetes-like** - Familiar patterns from Kubernetes
 
 This architecture is the foundation for building reactive systems at scale.

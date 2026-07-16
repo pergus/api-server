@@ -12,7 +12,6 @@ import (
 // - Watch endpoints subscribe and stream to clients
 // - Controllers subscribe and process events asynchronously
 //
-// This is modeled after Kubernetes' internal event broadcasting system.
 // It enables decoupled, event-driven architecture.
 type EventBus interface {
 	// Publish sends an event to all subscribers of that resource.

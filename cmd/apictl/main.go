@@ -41,7 +41,7 @@ func main() {
 }
 
 func printUsage() {
-	usage := `apictl - Kubernetes-inspired CLI for the dynamic API server
+	usage := `apictl - CLI for the dynamic API server
 
 USAGE:
   apictl <command> [options]

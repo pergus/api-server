@@ -1,6 +1,6 @@
 # Dynamic API Server with CRDs - Demonstration
 
-This demonstration shows how the server supports runtime API extensibility similar to Kubernetes.
+This demonstration shows how the server supports runtime API extensibility.
 
 ## Key Features
 
@@ -8,7 +8,7 @@ This demonstration shows how the server supports runtime API extensibility simil
 2. **Dynamic routing through resource lookup** - Resources are determined at runtime
 3. **Resource registry** - Thread-safe, dynamically updated registry
 4. **Scheme / factory registry** - Type creation without compiled types
-5. **API discovery** - Kubernetes-style `/api`, `/apis` endpoints
+5. **API discovery** - Discoverable via `/api`, `/apis` endpoints
 6. **Custom Resource Definitions (CRDs)** - Register new resources at runtime
 7. **Dynamic objects** - Generic JSON objects without compiled structs
 8. **Discovery-based client** - `apictl` discovers available APIs
@@ -234,8 +234,6 @@ If you add a new CRD, `apictl` automatically knows about it. No client rebuild. 
 
 ### Why This Architecture Matters
 
-This is exactly how Kubernetes achieves extensibility:
-
 1. **No core server code needs to change** - New resource types are added via CRDs
 2. **No router rebuild** - The HTTP dispatcher is generic
 3. **No recompilation** - The server is one binary
@@ -311,7 +309,7 @@ curl http://localhost:8080/crds
 
 ## Summary
 
-This example demonstrates a full implementation of Kubernetes-like API extensibility:
+This example demonstrates a full implementation of the API extensibility:
 
 - ✓ Generic HTTP handlers
 - ✓ Dynamic routing through resource lookup

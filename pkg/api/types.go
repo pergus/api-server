@@ -2,7 +2,7 @@
 // that can have resources registered and unregistered at runtime without
 // rebuilding the HTTP router or restarting the server.
 //
-// This package demonstrates how Kubernetes achieves extensibility:
+// This package demonstrates how the API server achieves extensibility:
 // - The router is completely generic and never changes
 // - Resources are looked up dynamically on every request
 // - New resources are immediately available once registered

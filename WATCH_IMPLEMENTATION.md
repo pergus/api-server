@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Watch API and Controller Framework extends the dynamic API server with Kubernetes-style event-driven architecture. Every resource operation generates events that are streamed to clients and processed by controllers.
+The Watch API and Controller Framework extends the dynamic API server with event-driven architecture. Every resource operation generates events that are streamed to clients and processed by controllers.
 
 ## Files Added/Modified
 
@@ -316,7 +316,7 @@ Both watch streams instantly show ADDED then MODIFIED events.
 This implementation shows:
 
 1. **Real-time streaming** without polling
-2. **Event-driven architecture** (Kubernetes-style)
+2. **Event-driven architecture**
 3. **Non-blocking pub/sub** with goroutines
 4. **Reconciliation pattern** for business logic
 5. **Thread-safe design** with proper synchronization

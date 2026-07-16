@@ -379,22 +379,6 @@ Just:
 2. Call registry.Register()
 3. Resource is available
 
-### Kubernetes Parallel
-
-This exactly mirrors Kubernetes:
-
-| Concept | This Project | Kubernetes |
-|---------|--------------|-----------|
-| Resource | User, Product | Pod, Service |
-| Resource Interface | api.Resource | metav1.Object |
-| Registry | Registry | API Server |
-| Scheme | Scheme | scheme.Scheme |
-| Storage | Storage | etcd |
-| Plugin | Plugin | CRD |
-| Router | router | API Server request handler |
-
-When you create a Kubernetes CRD, it gets registered in the API server's registry. The next request includes it in discovery. Full CRUD works immediately. This project demonstrates the same thing at a smaller scale.
-
 ## Performance Considerations
 
 ### Request Path
@@ -467,7 +451,6 @@ Single catch-all route that determines resource per request.
 - Routes never change
 - No locks on HTTP router
 - Truly generic
-- Mirrors Kubernetes design
 
 **Cons:**
 - Slightly more overhead per request (URL parsing, map lookup)
@@ -484,5 +467,3 @@ By moving resource discovery from HTTP router setup to request handling, we enab
 The cost is minimal: one Registry.Lookup() call per request (microseconds with RWMutex).
 
 The benefit is enormous: new resources work without recompilation or server restart.
-
-This is how Kubernetes achieves its legendary extensibility.

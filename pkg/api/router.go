@@ -15,10 +15,12 @@ import (
 // THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
 //
 // Unlike typical REST servers that create routes for each resource at startup:
-//   GET /users, POST /users, GET /users/{id}, etc.
+//
+//	GET /users, POST /users, GET /users/{id}, etc.
 //
 // This router creates only GENERIC routes that determine the resource at runtime:
-//   GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
+//
+//	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
 //
 // Every request:
 // 1. Extracts the resource name from the URL
@@ -32,7 +34,6 @@ import (
 //
 // This means new resources are immediately available after registration—
 // no router rebuild, no server restart, no HTTP listener restart.
-// This is how Kubernetes achieves extensibility.
 type Router struct {
 	registry    Registry
 	scheme      Scheme
@@ -55,7 +56,7 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventB
 // Setup registers the generic routes.
 // These routes are created ONCE and never change, even when new resources are added.
 func (r *Router) Setup() {
-	// Kubernetes-style discovery endpoints
+	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
 	r.mux.HandleFunc("/apis", r.discoverAPIs)
 	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
@@ -188,7 +189,7 @@ func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resourc
 
 // get handles GET /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) get(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
 	object, err := resource.Storage().Get(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -275,7 +276,7 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 
 // delete handles DELETE /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) delete(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) delete(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
 	if err := resource.Storage().Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

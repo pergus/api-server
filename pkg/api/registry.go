@@ -14,9 +14,9 @@ import (
 // - Is thread-safe for concurrent access
 // - Never requires HTTP router rebuilding
 //
-// This is exactly how Kubernetes manages resources dynamically.
-// When you define a CRD (Custom Resource Definition), Kubernetes registers it
-// in the API server's resource registry. The next request to /api includes it.
+// This is exactly how the API server manages resources dynamically.
+// When you define a CRD (Custom Resource Definition), the API server registers it
+// in the resource registry. The next request to /api includes it.
 type Registry interface {
 	// Register adds a resource to the registry.
 	// Called by plugins or the main server during initialization.

@@ -1,13 +1,13 @@
 # Dynamic API Server
 
-A truly dynamic, runtime-extensible REST API server in Go that demonstrates how Kubernetes achieves extensibility without server restarts or recompilation.
+A truly dynamic, runtime-extensible REST API server in Go that demonstrates how to achieve extensibility without server restarts or recompilation.
 
 **Key Features:**
 - New API resources can be added while the server is running
 - No HTTP router rebuild required
 - No server restart needed
 - **Watch API** - Stream events in real-time with Server-Sent Events
-- **Controller Framework** - Event-driven business logic (Kubernetes-style)
+- **Controller Framework** - Event-driven business logic
 - Two ways to extend:
   1. **CRDs (Custom Resource Definitions)** - JSON POST to `/crds` endpoint
   2. **Plugins (Go .so files)** - Classic plugin system
@@ -469,9 +469,9 @@ The server will automatically load it.
 4. **Thread Safety** - Registry and Scheme use RWMutex for concurrent access
 5. **Dependency Injection** - Explicit construction, minimal global state
 
-## How This Mirrors Kubernetes
+## How This Achieves Extensibility
 
-Kubernetes achieves extensibility through:
+The API-server achieves extensibility through:
 - **API Resources** - Like our Resource interface
 - **Scheme** - Type factory registry (identical pattern)
 - **API Server** - Generic request handling (like our Router)
@@ -479,13 +479,12 @@ Kubernetes achieves extensibility through:
 - **Storage Interface** - Abstract persistence (like our Storage)
 - **CRDs** - Custom Resource Definitions (like our Plugins)
 
-When you define a CRD in Kubernetes:
+When you define a CRD:
 1. It's registered with the API server
 2. It appears in /api (discovery)
 3. Full CRUD endpoints work immediately
 4. No API server restart needed
 
-This project demonstrates exactly those patterns.
 
 ## Project Structure
 
@@ -494,7 +493,7 @@ api-server/
 ├── go.mod                          # Go module file
 ├── cmd/
 │   ├── server/main.go              # Server entry point
-│   └── apitcl/               # CLI client
+│   └── apitcl/                     # CLI client
 │       ├── main.go
 │       ├── client.go
 │       └── commands.go

@@ -7,12 +7,11 @@ PROJECT OBJECTIVES: ✓ ALL COMPLETED
 1. ✓ Extend example with CRD system
 2. ✓ Support Custom Resource Definition endpoints
 3. ✓ Implement generic DynamicObject representation
-4. ✓ Add Kubernetes-style API discovery
+4. ✓ Add API discovery
 5. ✓ Build minimal apitcl client
 6. ✓ Support declarative YAML files
 7. ✓ Demonstrate without restart/recompilation
 8. ✓ Show relationship between architecture components
-9. ✓ Clarify Kubernetes extensibility patterns
 
 ================================================================================
 DELIVERABLES
@@ -108,7 +107,6 @@ KEY FEATURES DEMONSTRATED
    ✓ Delete CRDs and remove resources
 
 6. API DISCOVERY
-   ✓ Kubernetes-style /api endpoint
    ✓ /apis endpoint for groups
    ✓ /apis/{group}/{version} for resources
    ✓ Dynamic updates as CRDs change
@@ -117,7 +115,7 @@ KEY FEATURES DEMONSTRATED
    ✓ DynamicObject holds any JSON
    ✓ No compiled Go structs required
    ✓ Flexible schema support
-   ✓ Metadata handling (Kubernetes-like)
+   ✓ Metadata handling
 
 8. DISCOVERY-BASED CLIENT
    ✓ apitcl learns resources from server
@@ -232,7 +230,7 @@ EDUCATIONAL VALUE
 
 This project clearly demonstrates:
 
-1. How Kubernetes achieves runtime extensibility
+1. How to achieve runtime extensibility
    • No API server restart needed for new CRDs
    • Generic HTTP handlers
    • Dynamic resource registry
@@ -335,7 +333,7 @@ NEXT STEPS FOR USERS
 CONCLUSION
 ================================================================================
 
-This project successfully demonstrates how Kubernetes achieves runtime API
+This project successfully demonstrates how to achieve runtime API
 extensibility through:
 
 ✓ Generic HTTP handlers (never change)

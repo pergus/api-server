@@ -147,7 +147,6 @@ Complete index of all files in the extended dynamic API server project.
   - Problem and solution
   - Component architecture
   - Design patterns
-  - How it mirrors Kubernetes
 
 - **`CRD_ARCHITECTURE.md`** (~280 lines) - CRD system deep dive
   - CRD system components
@@ -289,7 +288,7 @@ api-server/
 3. **pkg/api/dynamic.go** - Dynamic object system
    - Schema-less data storage
    - Flexible JSON handling
-   - Kubernetes-like object representation
+   - Object representation
 
 4. **cmd/apitcl/client.go** - Discovery-based client
    - Shows how clients discover APIs

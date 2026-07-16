@@ -197,23 +197,6 @@ At no point does the handler know specific resource types.
 4. Copy to plugins/ directory
 5. Server loads automatically (within 2 seconds)
 
-## Kubernetes Parallels
-
-This project demonstrates the same architectural patterns used by Kubernetes:
-
-- **Generic API Server** - Like Kubernetes API server request handler
-- **Resource Registry** - Like Kubernetes resource registry
-- **Scheme/Type Factory** - Like Kubernetes Scheme
-- **Plugins as CRDs** - Like Custom Resource Definitions
-- **Interface-Based** - Like Kubernetes use of interfaces
-
-When you define a Kubernetes CRD, it follows exactly this pattern:
-1. CRD is registered with API server
-2. It appears in discovery
-3. Full CRUD endpoints work
-4. No API server restart needed
-
-This project demonstrates the same concept at a smaller scale.
 
 ## Performance Characteristics
 
@@ -271,6 +254,5 @@ This is a complete, production-quality example of:
 - Generic REST API routing
 - Runtime extensibility
 - Plugin system
-- Kubernetes-inspired architecture
 
 All in ~1,600 lines of idiomatic Go code.

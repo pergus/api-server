@@ -210,8 +210,6 @@ The `examples/` directory contains:
 6. **apitcl** discovers available resources via API
 7. **No restart ever needed** - resources appear and disappear at runtime
 
-This demonstrates Kubernetes-style extensibility!
-
 ## Next Steps
 
 - Read `CRD_ARCHITECTURE.md` for deep dive

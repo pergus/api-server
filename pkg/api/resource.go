@@ -6,7 +6,7 @@ package api
 // The framework never knows about specific types like User or Product—it only
 // knows about resources through this interface.
 //
-// This design is how Kubernetes allows arbitrary CRDs (Custom Resource Definitions)
+// This design is how the API server allows arbitrary resources (Custom Resource Definitions)
 // to be added at runtime without changing the core API server code.
 type Resource interface {
 	// Name returns the singular name of this resource.

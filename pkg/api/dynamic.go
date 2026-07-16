@@ -5,9 +5,9 @@ import (
 	"fmt"
 )
 
-// DynamicObject represents a generic Kubernetes-like object.
+// DynamicObject represents a generic API-like object.
 // It can hold any JSON data without requiring a compiled Go struct.
-// This is how Kubernetes stores Custom Resources.
+// This is how the API server stores Custom Resources.
 type DynamicObject struct {
 	APIVersion string                 `json:"apiVersion"`
 	Kind       string                 `json:"kind"`

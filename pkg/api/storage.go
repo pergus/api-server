@@ -17,7 +17,7 @@ import (
 // - Cloud storage (S3, Google Cloud Storage, etc.)
 // - Distributed systems (etcd, Consul, etc.)
 //
-// This is identical to how Kubernetes abstracts storage behind StorageInterface.
+// This is identical to how the API server abstracts storage behind StorageInterface.
 type Storage interface {
 	// List returns all stored objects.
 	List() ([]any, error)

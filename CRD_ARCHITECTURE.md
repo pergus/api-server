@@ -155,7 +155,7 @@ curl -X DELETE http://localhost:8080/crds/invoices.example.io
 
 ## API Discovery
 
-The server supports Kubernetes-style discovery:
+The server supports API discovery:
 
 ### Discovery Endpoints
 

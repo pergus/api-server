@@ -27,8 +27,7 @@ const (
 //	Watch clients (streaming)
 //	Concurrent Controllers (reconciliation)
 //
-// This decouples API handlers from watchers and controllers,
-// enabling the architecture demonstrated in Kubernetes.
+// This decouples API handlers from watchers and controllers.
 type Event struct {
 	// Type indicates what happened: Added, Modified, or Deleted.
 	Type EventType `json:"type"`

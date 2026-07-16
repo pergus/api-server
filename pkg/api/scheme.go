@@ -14,13 +14,15 @@ type ObjectFactory func() any
 
 // Scheme is a type registry and factory.
 //
-// This is inspired by Kubernetes' Scheme pattern, which maps between:
+// This maps between:
 // - Type names (strings) -> Constructor functions
 // - This allows the API server to create objects without importing or knowing about types
 //
 // The Scheme is how the generic handlers avoid importing resource types.
 // When a request arrives for /api/users, the handler asks:
-//   obj, _ := scheme.New("users")
+//
+//	obj, _ := scheme.New("users")
+//
 // This returns &User{} without the handler knowing anything about User.
 //
 // The Scheme is thread-safe for registration (which happens at startup or when

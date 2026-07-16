@@ -6,7 +6,7 @@ import (
 )
 
 // CRDDefinition represents a Custom Resource Definition.
-// This is how Kubernetes allows arbitrary new resources to be registered at runtime.
+// This is how the API server allows arbitrary new resources to be registered at runtime.
 type CRDDefinition struct {
 	Group    string                 `json:"group"`
 	Version  string                 `json:"version"`

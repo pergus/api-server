@@ -11,12 +11,7 @@ import (
 // Controllers are the "brain" of the system - they watch events and
 // perform business logic in response.
 //
-// In Kubernetes:
-// - Deployment controller creates Pods when a Deployment is created
-// - StatefulSet controller manages ordered Pod creation
-// - Job controller runs Pods to completion
-//
-// In this example:
+// Example controllers:
 // - OrderController reconciles orders (e.g., calculate totals, update status)
 // - Future: InvoiceController, UserController, etc.
 //

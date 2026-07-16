@@ -4,7 +4,7 @@ This document explains how the Watch API and Controller Framework enable event-d
 
 ## Overview
 
-The Watch API and Controller Framework brings Kubernetes-style event-driven architecture to the dynamic API server:
+The Watch API and Controller Framework brings event-driven architecture to the dynamic API server:
 
 ```
 HTTP Request → Generic Handler → Storage → Event Bus → Watch Clients
@@ -556,6 +556,5 @@ The Watch API and Controller Framework enable:
 2. **Event-driven logic** - Controllers react to events instead of being called directly
 3. **Decoupled systems** - Storage knows nothing about watchers/controllers
 4. **Scalable architecture** - One event triggers many reactions
-5. **Kubernetes-style** - Familiar mental model for those knowing Kubernetes
 
 This is the foundation for building reactive, event-driven systems in the API framework.

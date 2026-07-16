@@ -24,7 +24,7 @@ This document summarizes the extensions made to the dynamic API server to add fu
 **Components:**
 - `DynamicObject` struct - Generic container for any JSON data
 - `SimpleDynamicResource` - Wraps CRD to provide Resource interface
-- Custom JSON marshal/unmarshal to support both Kubernetes and flat formats
+- Custom JSON marshal/unmarshal
 
 **Features:**
 - Stores arbitrary JSON in Spec and Data fields
@@ -246,20 +246,6 @@ Release lock
 Next request finds it immediately
 ```
 
-## Kubernetes Parallels
-
-This implementation mirrors how Kubernetes extends itself:
-
-| Concept | This Project | Kubernetes |
-|---------|--------------|-----------|
-| Generic handlers | `router.route()` | API server dispatcher |
-| Resource lookup | `registry.Lookup()` | API resource registry |
-| Type factory | `scheme.New()` | Kubernetes Scheme |
-| CRDs | `CRDRegistry` | Kubernetes CRD controller |
-| Generic objects | `DynamicObject` | Unstructured API |
-| API discovery | `/api`, `/apis` | /api, /apis endpoints |
-| CLI client | `apictl` | kubectl command |
-
 ## Testing the Implementation
 
 ### Verify CRD Creation
@@ -350,6 +336,5 @@ This implementation provides a complete, production-ready CRD system that:
 ✓ Offers API discovery for dynamic clients
 ✓ Includes a full-featured CLI client
 ✓ Maintains thread safety for concurrent access
-✓ Educates on Kubernetes architecture patterns
 
 The code is organized for clarity, with extensive comments explaining the architectural decisions. Each component has a single responsibility, and the system is extensible for future enhancements.

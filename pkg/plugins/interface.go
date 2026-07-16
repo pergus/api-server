@@ -8,7 +8,7 @@
 // - When a plugin loads, it calls Register to add itself to the server
 // - The server never needs to recompile or restart
 //
-// This demonstrates how Kubernetes handles CustomResourceDefinitions (CRDs):
+// This demonstrates how to handle CustomResourceDefinitions (CRDs):
 // - A CRD is like a plugin that adds a new resource type
 // - Once registered, it works exactly like built-in resources
 // - The API server code never changes

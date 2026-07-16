@@ -249,8 +249,6 @@ Yet new endpoints appeared:
 - PUT /api/invoices/{id}
 - DELETE /api/invoices/{id}
 
-This is how Kubernetes works with Custom Resource Definitions (CRDs).
-
 ## How It Works
 
 ### 1. Generic Router
@@ -446,7 +444,6 @@ In this demonstration, you saw:
 3. **Dynamic Dispatch** - Requests look up resources at runtime
 4. **Generic Handlers** - One handler per operation, works for all resources
 5. **Plugin System** - New resources loaded automatically
-6. **Kubernetes Pattern** - Exactly how Kubernetes extends itself
 
 All without:
 - Server restart
@@ -471,8 +468,6 @@ This is true architectural extensibility.
 4. Why is this thread-safe?
    - Registry uses RWMutex; lookups have read lock, registration has write lock.
 
-5. How is this like Kubernetes?
-   - Kubernetes does exactly this with CRDs; this is a scaled-down version.
 
 ## Next Steps
 
