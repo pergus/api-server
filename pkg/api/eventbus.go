@@ -47,6 +47,7 @@ type SimpleEventBus struct {
 	subscribers  map[string][]*Subscription
 	publishQueue chan Event
 	done         chan struct{}
+	closed       bool
 }
 
 // NewEventBus creates a new event bus.
@@ -65,7 +66,15 @@ func NewEventBus() EventBus {
 
 // Publish enqueues an event for publishing.
 // Non-blocking - returns immediately.
+// If bus is closed, event is discarded silently.
 func (b *SimpleEventBus) Publish(event Event) {
+	b.mu.RLock()
+	if b.closed {
+		b.mu.RUnlock()
+		return
+	}
+	b.mu.RUnlock()
+
 	select {
 	case b.publishQueue <- event:
 	case <-b.done:
@@ -166,24 +175,28 @@ func (b *SimpleEventBus) fanOut(event Event) {
 
 // Close shuts down the event bus.
 // It will no longer publish events and closes all subscriptions.
+// Safe to call multiple times.
 func (b *SimpleEventBus) Close() error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	select {
-	case <-b.done:
+	if b.closed {
+		b.mu.Unlock()
 		return nil
-	default:
-		close(b.done)
 	}
+	b.closed = true
+	b.mu.Unlock()
+
+	// Signal done to publishLoop and any waiting Publish calls
+	close(b.done)
 
 	// Close all subscriptions
+	b.mu.Lock()
 	for _, subs := range b.subscribers {
 		for _, sub := range subs {
 			close(sub.sendCh)
 		}
 	}
-
 	b.subscribers = make(map[string][]*Subscription)
+	b.mu.Unlock()
+
 	return nil
 }
