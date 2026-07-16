@@ -122,27 +122,28 @@ func (d *DynamicObject) MarshalJSON() ([]byte, error) {
 	return json.Marshal(result)
 }
 
-// SimpleDynamicResource is a Resource implementation for CRD-based resources.
-type SimpleDynamicResource struct {
+// DynamicResource is a Resource implementation for CRD-based resources.
+// It wraps a CRD definition with in-memory storage and generic object handling.
+type DynamicResource struct {
 	crd     *CRDDefinition
 	storage Storage
 }
 
 // NewDynamicResource creates a new dynamic resource for a CRD.
-func NewDynamicResource(crd *CRDDefinition) *SimpleDynamicResource {
-	return &SimpleDynamicResource{
+func NewDynamicResource(crd *CRDDefinition) *DynamicResource {
+	return &DynamicResource{
 		crd:     crd,
 		storage: NewMemoryStorage(),
 	}
 }
 
 // Name returns the plural name of the resource.
-func (r *SimpleDynamicResource) Name() string {
+func (r *DynamicResource) Name() string {
 	return r.crd.Plural
 }
 
 // NewObject returns a new DynamicObject.
-func (r *SimpleDynamicResource) NewObject() any {
+func (r *DynamicResource) NewObject() any {
 	return &DynamicObject{
 		APIVersion: fmt.Sprintf("%s/%s", r.crd.Group, r.crd.Version),
 		Kind:       r.crd.Kind,
@@ -152,11 +153,11 @@ func (r *SimpleDynamicResource) NewObject() any {
 }
 
 // Storage returns the storage backend.
-func (r *SimpleDynamicResource) Storage() Storage {
+func (r *DynamicResource) Storage() Storage {
 	return r.storage
 }
 
 // CRD returns the CRD definition.
-func (r *SimpleDynamicResource) CRD() *CRDDefinition {
+func (r *DynamicResource) CRD() *CRDDefinition {
 	return r.crd
 }
