@@ -20,11 +20,10 @@ This book teaches you how to build such a system in Go. You will build two progr
 - **`apictl`** — a command-line client that *discovers* what the server can do,
   instead of hardcoding it.
 
-The style of this book is deliberately hands-on and incremental, in the spirit of
-*Distributed Services with Go* by Travis Jeffrey. Every chapter adds one idea, shows
-you the complete code for it, and ends with a **Checkpoint**: a command you can run
-to prove the program works so far. If you type in the code as you read, you will
-always have a running program at the end of every chapter.
+The style of this book is deliberately hands-on and incremental. Every chapter adds 
+one idea, shows you the complete code for it, and ends with a **Checkpoint**: 
+a command you can run to prove the program works so far. If you type in the code as 
+you read, you will always have a running program at the end of every chapter.
 
 You do **not** need access to any repository to follow along. Every file you need is
 printed in full inside these pages.
