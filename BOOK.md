@@ -141,7 +141,7 @@ flowchart LR
     H --> I[201 Created]
 ```
 
-Notice what the handler at step D never does: it never says `if resource == "users"`.
+Notice what the handler never says `if resource == "users"`.
 It never imports `User` or `Invoice`. It works entirely through three interfaces we
 will design in the coming chapters: `Resource`, `Storage`, and `Scheme`.
 
