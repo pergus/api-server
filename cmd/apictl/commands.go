@@ -78,83 +78,6 @@ func cmdPlugins(c *Client) {
 	w.Flush()
 }
 
-// printTable prints a slice of maps as a table.
-func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
-	// The "id" field is always printed as the first column.
-	// Other fields are printed in alphabetical order.
-	// If a field is missing in an item, it will be printed as empty.
-	// The table is printed to the provided tabwriter.Writer.
-
-	if len(items) == 0 {
-		return
-	}
-
-	// Collect all keys except "id".
-	keySet := make(map[string]struct{})
-
-	for _, item := range items {
-		for key := range item {
-			if key != "id" {
-				keySet[key] = struct{}{}
-			}
-		}
-	}
-
-	columns := make([]string, 0, len(keySet)+1)
-	columns = append(columns, "id")
-
-	keys := make([]string, 0, len(keySet))
-	for key := range keySet {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	columns = append(columns, keys...)
-
-	// Header.
-	for i, col := range columns {
-		if i > 0 {
-			fmt.Fprint(w, "\t")
-		}
-		fmt.Fprint(w, strings.ToUpper(col))
-	}
-	fmt.Fprintln(w)
-
-	// Rows.
-	for _, item := range items {
-		for i, col := range columns {
-			if i > 0 {
-				fmt.Fprint(w, "\t")
-			}
-
-			fmt.Fprint(w, formatValue(item[col]))
-		}
-		fmt.Fprintln(w)
-	}
-
-	w.Flush()
-}
-
-// formatValue formats a value for display in the table.
-func formatValue(value interface{}) string {
-	// If the value is a map or slice, it is marshaled to JSON.
-	// If the value is nil, it returns an empty string.
-	// Otherwise, it returns the string representation of the value.
-
-	if value == nil {
-		return ""
-	}
-
-	switch value.(type) {
-	case map[string]interface{}, []interface{}:
-		if data, err := json.Marshal(value); err == nil {
-			return string(data)
-		}
-	}
-
-	return fmt.Sprint(value)
-}
-
 // cmdGet lists or retrieves a resource
 func cmdGet(c *Client, args []string) {
 	if len(args) == 0 {
@@ -469,6 +392,8 @@ func cmdWatch(c *Client, args []string) {
 
 // Helper functions
 
+// extractID extracts the ID from a resource object.
+// It first looks for the "id" field, then "metadata.name", and returns "unknown" if neither is found.
 func extractID(obj map[string]interface{}) string {
 	if id, ok := obj["id"]; ok {
 		return fmt.Sprintf("%v", id)
@@ -489,6 +414,8 @@ func getFieldNames(obj map[string]interface{}) []string {
 	return fields
 }
 
+// pluralize returns the plural form of a resource kind.
+// This is a simplified version and may not cover all cases.
 func pluralize(kind string) string {
 	// Simplified pluralization
 	switch kind {
@@ -505,6 +432,8 @@ func pluralize(kind string) string {
 	}
 }
 
+// convertMap converts a map with interface{} keys to a map with string keys.
+// This is useful for converting YAML parsed maps to JSON-compatible maps.
 func convertMap(m map[interface{}]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range m {
@@ -518,4 +447,81 @@ func convertMap(m map[interface{}]interface{}) map[string]interface{} {
 		}
 	}
 	return result
+}
+
+// printTable prints a slice of maps as a table.
+func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
+	// The "id" field is always printed as the first column.
+	// Other fields are printed in alphabetical order.
+	// If a field is missing in an item, it will be printed as empty.
+	// The table is printed to the provided tabwriter.Writer.
+
+	if len(items) == 0 {
+		return
+	}
+
+	// Collect all keys except "id".
+	keySet := make(map[string]struct{})
+
+	for _, item := range items {
+		for key := range item {
+			if key != "id" {
+				keySet[key] = struct{}{}
+			}
+		}
+	}
+
+	columns := make([]string, 0, len(keySet)+1)
+	columns = append(columns, "id")
+
+	keys := make([]string, 0, len(keySet))
+	for key := range keySet {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	columns = append(columns, keys...)
+
+	// Header.
+	for i, col := range columns {
+		if i > 0 {
+			fmt.Fprint(w, "\t")
+		}
+		fmt.Fprint(w, strings.ToUpper(col))
+	}
+	fmt.Fprintln(w)
+
+	// Rows.
+	for _, item := range items {
+		for i, col := range columns {
+			if i > 0 {
+				fmt.Fprint(w, "\t")
+			}
+
+			fmt.Fprint(w, formatValue(item[col]))
+		}
+		fmt.Fprintln(w)
+	}
+
+	w.Flush()
+}
+
+// formatValue formats a value for display in the table.
+func formatValue(value interface{}) string {
+	// If the value is a map or slice, it is marshaled to JSON.
+	// If the value is nil, it returns an empty string.
+	// Otherwise, it returns the string representation of the value.
+
+	if value == nil {
+		return ""
+	}
+
+	switch value.(type) {
+	case map[string]interface{}, []interface{}:
+		if data, err := json.Marshal(value); err == nil {
+			return string(data)
+		}
+	}
+
+	return fmt.Sprint(value)
 }
