@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"gopkg.in/yaml.v2"
@@ -76,6 +78,83 @@ func cmdPlugins(c *Client) {
 	w.Flush()
 }
 
+// printTable prints a slice of maps as a table.
+func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
+	// The "id" field is always printed as the first column.
+	// Other fields are printed in alphabetical order.
+	// If a field is missing in an item, it will be printed as empty.
+	// The table is printed to the provided tabwriter.Writer.
+
+	if len(items) == 0 {
+		return
+	}
+
+	// Collect all keys except "id".
+	keySet := make(map[string]struct{})
+
+	for _, item := range items {
+		for key := range item {
+			if key != "id" {
+				keySet[key] = struct{}{}
+			}
+		}
+	}
+
+	columns := make([]string, 0, len(keySet)+1)
+	columns = append(columns, "id")
+
+	keys := make([]string, 0, len(keySet))
+	for key := range keySet {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	columns = append(columns, keys...)
+
+	// Header.
+	for i, col := range columns {
+		if i > 0 {
+			fmt.Fprint(w, "\t")
+		}
+		fmt.Fprint(w, strings.ToUpper(col))
+	}
+	fmt.Fprintln(w)
+
+	// Rows.
+	for _, item := range items {
+		for i, col := range columns {
+			if i > 0 {
+				fmt.Fprint(w, "\t")
+			}
+
+			fmt.Fprint(w, formatValue(item[col]))
+		}
+		fmt.Fprintln(w)
+	}
+
+	w.Flush()
+}
+
+// formatValue formats a value for display in the table.
+func formatValue(value interface{}) string {
+	// If the value is a map or slice, it is marshaled to JSON.
+	// If the value is nil, it returns an empty string.
+	// Otherwise, it returns the string representation of the value.
+
+	if value == nil {
+		return ""
+	}
+
+	switch value.(type) {
+	case map[string]interface{}, []interface{}:
+		if data, err := json.Marshal(value); err == nil {
+			return string(data)
+		}
+	}
+
+	return fmt.Sprint(value)
+}
+
 // cmdGet lists or retrieves a resource
 func cmdGet(c *Client, args []string) {
 	if len(args) == 0 {
@@ -102,15 +181,10 @@ func cmdGet(c *Client, args []string) {
 			return
 		}
 
-		// Print as table
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tOBJECT")
-
-		for _, item := range items {
-			itemID := extractID(item)
-			fmt.Fprintf(w, "%s\t%v\n", itemID, item)
-		}
+		printTable(w, items)
 		w.Flush()
+
 	} else {
 		// Get specific resource
 		item, err := c.GetResource(resource, id)
