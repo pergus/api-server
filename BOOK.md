@@ -943,8 +943,6 @@ import (
 type Router struct {
 	registry    Registry
 	scheme      Scheme
-	crdRegistry CRDRegistry // added in Chapter 10
-	eventBus    EventBus    // added in Chapter 13
 	mux         *http.ServeMux
 }
 
