@@ -789,11 +789,14 @@ This separation keeps the handler simple and reusable. The handler focuses only 
 
 ```bash
 go test ./pkg/api -run 'Registry|Scheme' -v
+PASS
+ok  	github.com/pergus/api-server/pkg/api	0.244s [no tests to run]
 go build ./...
 ```
 
-Write a quick test if you like: register a resource, look it up, register a factory,
-call `New`. Both tables should behave. The dynamic core is now in place.
+Write a quick test if you like: register a resource, look it up, register a factory, and call `New`. Both tables should behave as expected. This small check confirms that the registry can store and retrieve resources correctly, while the scheme can create new objects when requested.
+
+Once these pieces work together, the dynamic core is in place. Resources can be added, discovered, and created at runtime without changing the main handler logic. From here, the system has the foundation it needs to support new resource types through simple registration rather than custom code.
 
 ---
 
