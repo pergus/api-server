@@ -543,9 +543,13 @@ func TestMemorySmoke(t *testing.T) {
 
 ```bash
 go test ./pkg/api -run Smoke -v
+=== RUN   TestMemorySmoke
+--- PASS: TestMemorySmoke (0.00s)
+PASS
+ok  	github.com/pergus/api-server/pkg/api	0.262s
 ```
 
-Green means your storage foundation works.
+PASS means your storage foundation works.
 
 ---
 
