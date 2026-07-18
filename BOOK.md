@@ -778,9 +778,12 @@ flowchart TB
     REQ --> Scheme
 ```
 
-The registry answers "does `users` exist and where is its storage?" The scheme
-answers "give me an empty `users` object to decode into." Together they let one
-handler serve every resource.
+The registry answers one simple question: "Is this resource available, and where can I find its data?" The scheme answers another: "How do I create an empty object of this type so I can fill it with incoming data?" Together, they give a single handler everything it needs to work with any resource in the system.
+
+For example, when a request arrives for `users`, the handler does not need to know what a `User` object looks like or where users are stored. It asks the registry for the `users` resource, uses the scheme to create a new empty user object, and then decodes the incoming data into that object. The same process works for `orders`, `products`, or any other registered resource.
+
+This separation keeps the handler simple and reusable. The handler focuses only on processing requests, while the registry and scheme provide the resource-specific details behind the scenes. Adding a new resource does not require changing the handler; it only requires registering the resource and teaching the scheme how to create it.
+
 
 ### Checkpoint
 
