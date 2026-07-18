@@ -354,7 +354,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	"time"
 )
 
 // Storage defines the persistence interface for all resources.
@@ -378,31 +377,18 @@ type Storage interface {
 //
 // All objects are stored in a map protected by a sync.RWMutex.
 // For production, you would replace this with a real database.
-//
-// The eventBus and resource fields are used later (Chapter 13) to publish
-// change events. Leave them nil for now; they do nothing until wired up.
 type MemoryStorage struct {
 	mu       sync.RWMutex
 	items    map[string]any
-	eventBus EventBus // added in Chapter 13
-	resource string   // added in Chapter 13
 }
 
 // NewMemoryStorage creates a new in-memory storage instance.
 func NewMemoryStorage() Storage {
 	return &MemoryStorage{
 		items:    make(map[string]any),
-		eventBus: nil,
-		resource: "",
 	}
 }
 ```
-
-> **Forward reference:** `EventBus` does not exist yet — we create it in Chapter 13.
-> Until then, comment out the `eventBus`/`resource` fields (and the event-publishing
-> lines below) if you want the package to compile in isolation, or simply define an
-> empty `type EventBus interface{}` placeholder. The listings below show the final
-> form so you do not have to revisit them later.
 
 Now let's look at the five methods that make up the storage interface. Each
 method that modifies data—creating, updating, or deleting an object—publishes an
@@ -416,12 +402,6 @@ naturally belong without complicating the initial implementation.
 **Listing 3.3 — `pkg/api/storage.go` (methods)**
 
 ```go
-// SetEventBus attaches an event bus so changes publish events (Chapter 13).
-func (s *MemoryStorage) SetEventBus(bus EventBus, resource string) {
-	s.eventBus = bus
-	s.resource = resource
-}
-
 // List returns a copy of all stored items.
 func (s *MemoryStorage) List() ([]any, error) {
 	s.mu.RLock()
@@ -460,11 +440,6 @@ func (s *MemoryStorage) Create(obj any) error {
 	}
 	s.items[id] = obj
 
-	if s.eventBus != nil {
-		s.eventBus.Publish(Event{
-			Type: Added, Resource: s.resource, Object: obj, Timestamp: time.Now(),
-		})
-	}
 	return nil
 }
 
@@ -478,11 +453,6 @@ func (s *MemoryStorage) Update(id string, obj any) error {
 	}
 	s.items[id] = obj
 
-	if s.eventBus != nil {
-		s.eventBus.Publish(Event{
-			Type: Modified, Resource: s.resource, Object: obj, Timestamp: time.Now(),
-		})
-	}
 	return nil
 }
 
@@ -491,17 +461,12 @@ func (s *MemoryStorage) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	obj, exists := s.items[id]
+	_, exists := s.items[id]
 	if !exists {
 		return fmt.Errorf("not found: %s", id)
 	}
 	delete(s.items, id)
 
-	if s.eventBus != nil {
-		s.eventBus.Publish(Event{
-			Type: Deleted, Resource: s.resource, Object: obj, Timestamp: time.Now(),
-		})
-	}
 	return nil
 }
 
