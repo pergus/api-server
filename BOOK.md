@@ -303,9 +303,11 @@ its objects. Then provide a thread-safe in-memory storage implementation.
 
 ### The Resource interface
 
-A `Resource` is the only thing the framework knows about a "kind of object." It has a
-name (used in the URL), a factory for empty objects, and a storage backend. That is
-all. The framework never sees `User` or `Order` — only `Resource`.
+A `Resource` is the framework's abstraction for a type of object. It defines the 
+resource name (used in the URL), provides a factory for creating empty instances, 
+and specifies the storage backend. The framework doesn't know about concrete 
+types such as `User` or `Order`; it only interacts with `Resource`.
+
 
 **Listing 3.1 — `pkg/api/resource.go`**
 
