@@ -336,7 +336,7 @@ type Resource interface {
 
 ### The Storage interface
 
-Persistence is abstracted behind a storage interface, allowing the framework to 
+Persistence is abstracted behind a `Storage` interface, allowing the framework to 
 remain completely independent of where data is stored. Whether objects are kept 
 in memory, persisted in Postgres, written to S3, or managed by etcd makes no 
 difference to the rest of the framework. As long as the storage backend 
