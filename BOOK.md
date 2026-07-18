@@ -336,8 +336,14 @@ type Resource interface {
 
 ### The Storage interface
 
-Persistence is abstracted so the framework never knows whether data lives in memory,
-Postgres, S3, or etcd. Five methods cover the CRUD lifecycle.
+Persistence is abstracted behind a storage interface, allowing the framework to 
+remain completely independent of where data is stored. Whether objects are kept 
+in memory, persisted in Postgres, written to S3, or managed by etcd makes no 
+difference to the rest of the framework. As long as the storage backend 
+implements the interface, it can be used interchangeably. 
+The interface consists of five methods that together cover the complete 
+CRUD lifecycle.
+
 
 **Listing 3.2 — `pkg/api/storage.go` (interface + type)**
 
