@@ -564,8 +564,19 @@ concurrent reads.
 
 ### The Registry
 
-The registry is the beating heart of runtime extensibility. It maps names to
-`Resource` values and can be modified while requests are flowing.
+The `Registry` is the heart of runtime extensibility. It maps names to
+`Resource` values and can be modified while requests are flowing, allowing the
+system to adapt dynamically without requiring restarts or disruptive
+redeployments. By acting as a central point of discovery and coordination, the
+registry enables components to be added, replaced, or reconfigured at runtime
+while keeping the rest of the application decoupled from implementation details.
+
+This design provides a flexible foundation for building systems that can evolve
+alongside changing requirements. Resources can be registered as they become
+available, looked up when needed, and updated as the runtime environment
+changes. The registry therefore serves not only as a storage mechanism, but as
+the connective tissue that allows independent parts of the system to collaborate
+safely and efficiently. 
 
 **Listing 4.1 — `pkg/api/registry.go`**
 
@@ -671,9 +682,9 @@ func (r *SimpleRegistry) Count() int {
 
 ### The Scheme
 
-Generic handlers face a problem: to decode incoming JSON they need a concrete
-destination object, but they must not import `User` or `Order`. The **Scheme** solves
-this by mapping a name to a factory function that returns a fresh, empty object.
+Generic handlers face a problem: to decode incoming JSON they need a concrete destination object, but they must not import `User` or `Order`. The `Scheme` solves this by mapping a name to a factory function that returns a fresh, empty object. This creates a layer of indirection between the generic processing logic and the concrete types being handled, allowing the system to work with new resource types without requiring changes to the handler itself.
+
+At runtime, the handler can ask the `Scheme` for an object based only on its registered name, populate it with decoded data, and continue processing without needing to know anything about the object's internal structure. This keeps type-specific knowledge isolated at the registration boundary while preserving the flexibility of a generic execution pipeline. New resources can be introduced simply by adding new registrations, rather than modifying existing infrastructure code.
 
 **Listing 4.2 — `pkg/api/scheme.go`**
 
