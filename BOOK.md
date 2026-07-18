@@ -810,14 +810,42 @@ response envelopes it returns.
 
 ### Response envelopes
 
-Keeping response shapes consistent makes the CLI simpler later.
+The API package defines the standard response shapes used by the router. Instead
+of returning different JSON formats from different parts of the system, every
+endpoint follows a small set of predictable envelopes. This makes the API easier
+to understand and keeps future clients, such as a CLI, from needing special
+handling for every request. 
+
+`ListResponse` is used when returning multiple objects. It contains the objects
+themselves in `Items` and includes a `Count` field so clients know how many
+results were returned. The router can use this same structure for any resource
+because the items are stored as `any`, allowing different object types to be
+returned through the same generic code path. 
+
+`ErrorResponse` provides a consistent format for failures. Rather than returning
+plain text or different error structures, the API always returns an error
+message together with the HTTP status code that describes what happened.
+
+The creation, update, and deletion responses are intentionally simple. When an
+object is created, `CreatedResponse` returns a confirmation message and the new
+object's ID. Updates and deletes only need to confirm that the operation
+completed, so their responses contain a message field.
+
+Finally, `DiscoveryResponse` is used when the system needs to describe what
+resources are available. It returns the list of registered resources along with
+a timestamp, giving clients a way to discover the current capabilities of the
+running application.
+
+These response types form the common language between the router and its
+clients. With the response format defined up front, the router can focus on its
+main job: finding the correct resource, calling the generic handler, and
+returning the result in a consistent way.
+
 
 **Listing 5.1 — `pkg/api/types.go`**
 
 ```go
 package api
-
-import "time"
 
 // ListResponse wraps a list of objects.
 type ListResponse struct {
@@ -856,8 +884,42 @@ type DiscoveryResponse struct {
 
 ### The router skeleton
 
-The router holds references to the registry, scheme, and (later) the CRD registry and
-event bus. It owns a standard `http.ServeMux` but registers only generic routes on it.
+The router is the central piece that connects incoming HTTP requests to the
+dynamic parts of the system. Instead of creating a separate route for every
+resource, it creates a small number of generic routes and decides what to do
+only after a request arrives. This is what allows the system to support new
+resources without changing the router code. 
+
+The `Router` keeps references to the components it needs to make those
+decisions. The `registry` tells the router which resources exist and where they
+are stored. The `scheme` helps create new objects of the correct type when data
+needs to be decoded. The `crdRegistry` and `eventBus` fields are reserved for
+later chapters, where the router will gain additional capabilities such as
+custom resources and event notifications. 
+
+The constructor, `NewRouter`, connects these dependencies together and creates
+the internal `http.ServeMux`. The router does not know about individual
+resources here. It only receives the systems that allow it to discover and work
+with resources dynamically. 
+
+The `Setup` method is where the router registers its routes. The important
+detail is that these routes are fixed. The router does not add a new route when
+a resource is created. Instead, the same generic routes handle every resource
+that exists in the registry. For example, adding a new `users` or `orders`
+resource does not require a new HTTP path to be registered. 
+
+The `/api` route provides discovery information by listing available resources.
+Requests that do not match a more specific route are passed to the generic
+routing logic. 
+
+Finally, `ServeHTTP` allows `Router` to behave like any other Go HTTP handler.
+It simply forwards the request to the internal `ServeMux`, which selects the
+correct handler function. 
+
+The result is a router that remains unchanged as the system grows. The routes
+define the API structure, while the registry and scheme determine what resources
+the API can serve at runtime. This separation is the foundation of the project's
+dynamic design. 
 
 **Listing 5.2 — `pkg/api/router.go` (type, constructor, Setup, ServeHTTP)**
 
@@ -886,14 +948,11 @@ type Router struct {
 	mux         *http.ServeMux
 }
 
-// NewRouter creates a new router. (crdRegistry and eventBus may be nil until
-// Chapters 10 and 13; the CRUD paths below do not use them.)
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+// NewRouter creates a new router.
+func NewRouter(registry Registry, scheme Scheme ) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
-		crdRegistry: crdRegistry,
-		eventBus:    eventBus,
 		mux:         http.NewServeMux(),
 	}
 }
@@ -902,9 +961,6 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventB
 // are added or removed at runtime.
 func (r *Router) Setup() {
 	r.mux.HandleFunc("/api", r.discovery)         // list resources
-	r.mux.HandleFunc("/apis", r.discoverAPIs)     // API groups (Chapter 11)
-	r.mux.HandleFunc("/apis/", r.discoverAPIPath) // group/version (Chapter 11)
-	r.mux.HandleFunc("/plugins", r.listPlugins)   // plugin info (Chapter 12)
 	r.mux.HandleFunc("/", r.route)                // everything else
 }
 
@@ -914,15 +970,59 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 ```
 
-> If you are building strictly chapter by chapter, temporarily remove the
-> `/apis`, `/apis/`, and `/plugins` lines from `Setup` (and the `crdRegistry`/
-> `eventBus` fields) until you reach the chapters that add them. The full listing is
-> shown here so the file matches its final form.
 
 ### Discovery and routing
 
-`discovery` answers `GET /api` with the current resource names. Because it reads the
-registry live, it reflects runtime changes automatically.
+The router has two closely related responsibilities: helping clients discover
+what the server can do, and directing every incoming request to the correct
+handler. Both tasks rely on the registry, which is consulted at runtime rather
+than at application startup.
+
+The `discovery` handler implements the `GET /api` endpoint. When called, it asks
+the registry for the names of all currently registered resources and returns
+them in a `DiscoveryResponse` together with the current timestamp. Because the
+information comes directly from the live registry, the response always reflects
+the current state of the system. If a resource is added or removed while the
+server is running, the next discovery request immediately shows the change.
+
+The `route` function is the heart of the router. Every resource request
+eventually passes through this single function. Instead of relying on hundreds
+of predefined routes, it examines the request path, identifies the requested
+resource, and decides what action to perform.
+
+The first step is to check for special paths. All resource requests are expected
+to begin with `/api/`. Requests that do not follow this format are rejected with
+a `404 Not Found` response. 
+
+Once the path has been validated, the router extracts the resource name. For
+example, `/api/users/alice` is split into the resource name `users` and the
+object identifier `alice`. The router then performs the most important operation
+in the entire request flow: it asks the registry whether the requested resource
+exists.
+
+If the registry cannot find the resource, the request ends with a `404 Not
+Found`. If the resource does exist, the router never needs to know whether it
+represents users, orders, products, or any other type. It simply receives a
+`Resource` value that contains everything needed to continue processing.
+
+The remaining logic is based on the structure of the URL. Requests of the form
+`/api/{resource}` operate on the collection as a whole, while requests of the
+form `/api/{resource}/{id}` operate on a single object. Rather than handling
+every HTTP method directly inside `route`, the router delegates to two small
+helper functions.
+
+`routeListOrCreate` handles collection-level operations. A `GET` request lists
+all objects in the resource, while a `POST` request creates a new one.
+Similarly, `routeItemOp` handles operations on an individual object. Depending
+on the HTTP method, it retrieves, updates, or deletes the specified object.
+
+This layered design keeps the routing logic easy to follow. The `route` function
+is responsible only for understanding the URL and locating the requested
+resource. Once those decisions have been made, the appropriate helper function
+performs the requested operation. The result is a single routing pipeline that
+works for every resource registered with the system, without requiring
+resource-specific routes or handlers.
+
 
 **Listing 5.3 — `pkg/api/router.go` (discovery + route)**
 
@@ -944,12 +1044,6 @@ func (r *Router) discovery(w http.ResponseWriter, req *http.Request) {
 // route is the single dispatcher for all resource (and CRD) requests.
 func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
-
-	// /crds endpoints are handled separately (Chapter 10).
-	if strings.HasPrefix(path, "/crds") {
-		r.routeCRD(w, req)
-		return
-	}
 
 	if !strings.HasPrefix(path, "/api/") {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -1007,18 +1101,61 @@ func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource 
 
 ### The five generic handlers
 
-Here is the payoff. These five handlers serve *every* resource. None of them mentions
-a concrete type; they use `resource.Storage()` and `r.scheme.New(...)`.
+This is where the design comes together. Instead of writing separate CRUD
+handlers for `users`, `orders`, `products`, and every future resource, the
+router implements just five generic handlers. Each one works with any registered
+resource by relying on the registry, the scheme, and the resource's storage
+implementation.
+
+The `list` handler serves `GET /api/{resource}` requests. It asks the resource's
+storage to return every stored object and wraps the result in a `ListResponse`.
+The handler does not know or care what type of objects it is returning. As long
+as the resource provides a storage implementation, the same code can list users,
+orders, or any other resource.
+
+The `get` handler is even simpler. It receives the resource and an object ID,
+asks the storage for the matching object, and returns it as JSON. If no object
+exists with the given ID, the handler responds with a `404 Not Found`.
+
+The `create` handler demonstrates why the scheme exists. Before JSON can be
+decoded, Go needs an empty destination object of the correct type. Rather than
+importing concrete types such as `User` or `Order`, the handler asks the scheme
+to create a new object based on the resource's name. The request body is then
+decoded into that object and passed to the resource's storage for creation. If
+everything succeeds, the handler returns a `201 Created` response along with the
+ID of the newly created object.
+
+The `update` handler follows almost the same process. It creates a new empty
+object through the scheme, decodes the incoming JSON into it, and asks the
+storage to replace the existing object identified by the URL. Because object
+creation is delegated to the scheme, the update logic remains completely
+independent of any concrete type.
+
+The `delete` handler is the simplest of the five. It tells the storage to remove
+the object with the specified ID and returns a confirmation message if the
+operation succeeds.
+
+Finally, the helper function `extractIDFromObject` retrieves the object's `id`
+field without knowing its concrete type. It does this by temporarily converting
+the object to JSON and then reading the resulting data as a generic map.
+Although this approach is less efficient than accessing a struct field directly,
+it keeps the generic handlers completely decoupled from resource-specific types.
+
+Taken together, these five handlers demonstrate the benefit of the architecture
+built in the previous chapters. Every request follows the same path: the router
+identifies the resource, the scheme creates an empty object when necessary, and
+the storage performs the requested operation. The handlers never import or
+reference concrete application types, yet they can perform full CRUD operations
+on any resource registered with the system. Adding a new resource therefore
+requires no changes to the router—only a new registration in the registry and a
+factory function in the scheme.
+
 
 **Listing 5.4 — `pkg/api/router.go` (CRUD handlers)**
 
 ```go
 // list handles GET /api/{resource}. The ?watch=true branch is added in Chapter 14.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
-	if req.URL.Query().Get("watch") == "true" {
-		r.watch(w, req, resource) // Chapter 14
-		return
-	}
 	objects, err := resource.Storage().List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1116,10 +1253,6 @@ func extractIDFromObject(obj any) string {
 	return ""
 }
 ```
-
-We will add the `watch`, `routeCRD`, `discoverAPIs`, `discoverAPIPath`, and
-`listPlugins` methods in later chapters. For a chapter-5-only build, stub them out or
-omit their route registrations.
 
 ### Checkpoint
 
