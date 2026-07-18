@@ -528,10 +528,18 @@ func extractID(obj any) (string, error) {
 }
 ```
 
-The `extractID` trick is worth pausing on. The storage layer accepts `any`, so it
-cannot call `obj.ID`. Instead it marshals the object to JSON, unmarshals into a
-generic map, and reads the `id` key. This keeps storage fully type-agnostic — the
-same code stores users, orders, and resource types that do not exist yet.
+The `extractID` helper is worth a closer look. Because the storage layer
+operates on values of type `any`, it has no knowledge of the concrete object
+type and therefore cannot simply access an `ID` field or method. Instead, it
+marshals the object to JSON, unmarshals it into a generic map, and retrieves the
+value associated with the `id` key.
+
+Although this approach is not the most efficient, it keeps the storage layer
+completely type-agnostic. The same implementation can store `User` objects,
+`Order` objects, or entirely new resource types that have not even been defined
+when the framework itself is written. This flexibility is one of the key design
+goals of the framework: the storage layer works with the serialized
+representation of an object rather than its concrete Go type. 
 
 **Figure 3.1 — Type-agnostic ID extraction**
 
