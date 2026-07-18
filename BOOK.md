@@ -404,9 +404,14 @@ func NewMemoryStorage() Storage {
 > empty `type EventBus interface{}` placeholder. The listings below show the final
 > form so you do not have to revisit them later.
 
-Now the five methods. Notice each mutating method publishes an event *after* the
-data operation succeeds — but only if an event bus was attached. Early in the book it
-never is, so those blocks are inert.
+Now let's look at the five methods that make up the storage interface. Each
+method that modifies data—creating, updating, or deleting an object—publishes an
+event after the operation has completed successfully. Event publication is
+optional, however. If an event bus has been attached to the storage backend, the
+corresponding event is emitted; otherwise nothing happens. Early in the book no
+event bus has been configured, so these event-publishing blocks are effectively
+inactive. They are included from the beginning to show where notifications
+naturally belong without complicating the initial implementation. 
 
 **Listing 3.3 — `pkg/api/storage.go` (methods)**
 
