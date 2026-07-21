@@ -6489,8 +6489,6 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 
 ### Client side: consuming SSE
 
-### Client side: consuming SSE
-
 The server-side watch endpoint turns resource changes into a continuous HTTP
 stream. The client needs the opposite piece of functionality: it must keep the
 connection open, understand the SSE wire format, and convert incoming messages
