@@ -192,16 +192,6 @@ create-invoice: client
 integration-flow: create-crd create-invoice get-invoices
 	@echo "✓ Integration flow complete"
 
-# Docker targets (optional - for future use)
-docker-build:
-	@echo "Building Docker image..."
-	docker build -t api-server:latest .
-	@echo "✓ Docker image built"
-
-docker-run:
-	@echo "Running Docker container..."
-	docker run -p 8080:8080 api-server:latest
-
 # Help for specific commands
 help-quickstart:
 	@echo "Quick Start Guide"
@@ -224,4 +214,4 @@ help-quickstart:
 .PHONY: help build server client all clean run run-server demo test test-coverage \
         fmt lint staticcheck deadcode install-deps clean-all quickstart dev info verify setup-plugins \
         prepare-demo api-resources api-versions create-crd get-invoices create-invoice \
-        integration-flow docker-build docker-run help-quickstart
+        integration-flow help-quickstart
