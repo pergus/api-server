@@ -5377,10 +5377,123 @@ flowchart TD
 
 ### Goal
 
-Introduce the event model and a non-blocking publish/subscribe bus. Then activate the
-event-publishing code we planted in `MemoryStorage` back in Chapter 3.
+The API server has now reached the point where resources can be created
+dynamically, discovered at runtime, and extended through plugins. The next
+capability needed is a way for the rest of the system to react when something
+changes.
+
+Until this chapter, requests have been handled as isolated operations. A client
+sends a request, the router calls storage, and the response is returned. That
+model works well for basic CRUD, but it limits what the platform can do. A watch
+client cannot know when an object changes unless it repeatedly polls the API. A
+controller cannot react immediately when it needs to reconcile state. Plugins
+cannot observe resource activity without tightly coupling themselves to request
+handlers.
+
+An event system solves this by introducing a notification layer between storage
+operations and consumers.
+
+The design goal is a simple publish/subscribe model:
+
+* Storage publishes an event when an object changes.
+* Subscribers receive events for the resources they care about.
+* HTTP watch clients consume events as streams.
+* Controllers use events to trigger reconciliation.
+* Plugins can observe changes without modifying core server code.
+
+The important architectural choice is that storage does not know who is
+listening. It only announces that something happened. The event bus becomes the
+intermediary that distributes those notifications to any interested consumers.
+
+The flow looks like this:
+
+```
+HTTP POST /api/{resource}
+          |
+          v
+   Storage.Create()
+          |
+          v
+ EventBus.Publish(Event{Type: Added, ...})
+          |
+          +----------------+
+          |                |
+          v                v
+   Watch clients     Controllers
+   (streaming)       (reconciliation)
+```
+
+This keeps the API layer loosely coupled. A create request does not need to know
+whether there are ten watch clients, zero clients, or several background
+controllers. It simply performs the write operation, and the event system
+handles distribution.
+
+The event model introduced here is intentionally small. It captures the three
+fundamental lifecycle changes that occur in a resource-oriented API: 
+
+* `ADDED`: a new object was created.
+* `MODIFIED`: an existing object changed.
+* `DELETED`: an object was removed.
+
+These events are sufficient to build higher-level functionality later. A watch
+API can stream them directly to clients, while controllers can use them as
+signals that reconciliation work may be required.
 
 ### The event model
+
+The event model defines the data that travels through the event bus. An event
+contains four important pieces of information:
+
+1. **Type** — describes what happened.
+2. **Resource** — identifies which resource changed.
+3. **Object** — contains the object affected by the change.
+4. **Timestamp** — records when the event was generated.
+
+The model deliberately uses `any` for the object field. This is consistent with
+the rest of the framework: the event system should not need to know whether it
+is carrying a `User`, `Product`, `Order`, or a dynamically created CRD object.
+Any resource type can flow through the same event pipeline.
+
+For example, creating a user might generate:
+
+```json
+{
+  "type": "ADDED",
+  "resource": "users",
+  "object": {
+    "id": "user-001",
+    "name": "Alice"
+  },
+  "timestamp": "2026-01-01T12:00:00Z"
+}
+```
+
+A client watching `users` does not need to understand the storage
+implementation. It only receives the notification that a user object was added.
+
+The `Subscription` type represents an individual consumer's connection to the
+event stream. A subscription is created when something wants to receive events
+for a particular resource. The consumer receives a read-only channel containing
+matching events.
+
+Using channels is a natural fit for Go because they provide safe communication
+between goroutines. The event bus can publish from storage operations while
+independent consumers process events asynchronously.
+
+However, the subscription design also introduces an important rule: consumers
+must keep draining their channels. A slow consumer should not prevent other
+consumers from receiving events. The event bus therefore uses buffered channels
+and non-blocking delivery so one subscriber cannot stall the entire system.
+
+This is especially important for watch functionality. A browser, CLI client, or
+controller may disconnect, pause, or process events slowly. The server must
+continue operating normally even if one subscriber is unavailable.
+
+The `Close()` method allows subscribers to terminate their connection cleanly.
+When a subscription is closed, the event bus can stop delivering events and
+release the associated resources. This lifecycle is important for long-running
+systems because subscriptions may exist for minutes, hours, or even the lifetime
+of a controller.
 
 **Listing 13.1 — `pkg/api/event.go`**
 
@@ -5389,33 +5502,69 @@ package api
 
 import "time"
 
-// EventType is the kind of change that occurred.
+// EventType represents the type of event that occurred.
 type EventType string
 
 const (
-	Added    EventType = "ADDED"
+	// Added indicates a new resource was created.
+	Added EventType = "ADDED"
+	// Modified indicates an existing resource was updated.
 	Modified EventType = "MODIFIED"
-	Deleted  EventType = "DELETED"
+	// Deleted indicates a resource was removed.
+	Deleted EventType = "DELETED"
 )
 
 // Event represents a change to a resource.
+//
+// Events flow through the system as:
+//
+//	HTTP POST /api/{resource}
+//	      ↓
+//	Storage.Create()
+//	      ↓
+//	EventBus.Publish(Event{Type: Added, ...})
+//	      ↓
+//	Watch clients (streaming)
+//	Concurrent Controllers (reconciliation)
+//
+// This decouples API handlers from watchers and controllers.
 type Event struct {
-	Type      EventType `json:"type"`
-	Resource  string    `json:"resource"`
-	Object    any       `json:"object"`
+	// Type indicates what happened: Added, Modified, or Deleted.
+	Type EventType `json:"type"`
+
+	// Resource is the name of the resource that changed (e.g., "users", "orders").
+	Resource string `json:"resource"`
+
+	// Object is the resource object (after the change).
+	// For Deleted events, this is the last state before deletion.
+	Object any `json:"object"`
+
+	// Timestamp is when the event was generated.
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// Subscription delivers events for one resource through a channel.
+// Subscription represents a client's subscription to events for a specific resource.
+//
+// Subscribers receive events through a channel and must actively drain the channel
+// to avoid blocking other subscribers. The EventBus implementation ensures that
+// no subscriber can block others.
 type Subscription struct {
+	// Resource is the resource name this subscription is for.
 	Resource string
-	Events   <-chan Event
 
-	done   chan struct{}
+	// Events is the channel through which events are delivered.
+	// The channel is buffered to handle brief processing delays.
+	Events <-chan Event
+
+	// done signals that the subscription should be closed.
+	done chan struct{}
+
+	// internal send channel (write-only) - closed by EventBus when unsubscribing.
 	sendCh chan Event
 }
 
-// Close stops the subscription from receiving further events.
+// Close closes this subscription and stops receiving events.
+// After closing, no more events will be sent.
 func (s *Subscription) Close() error {
 	select {
 	case <-s.done:
@@ -5427,11 +5576,108 @@ func (s *Subscription) Close() error {
 }
 ```
 
+
+This event model provides the foundation for the next pieces of the system. The
+storage layer can now announce changes without knowing who consumes them, and
+future features can build on top of the same mechanism.
+
+The next step is implementing the `EventBus` itself: the component responsible
+for maintaining subscriptions, publishing events, and ensuring that notification
+delivery remains safe and non-blocking.
+
+
 ### The event bus
 
-The bus must never let a slow subscriber block a publisher or other subscribers. It
-achieves this with a buffered publish queue, a publish loop, and a separate fan-out
-goroutine per event; each subscription has its own 100-event buffer.
+The event bus is the component that turns the API server from a request/response
+system into an event-driven system. Without an event bus, every feature that
+needs to react to changes would need to be tightly connected to the storage
+layer. A watch endpoint, for example, would need to know exactly when a resource
+was created, updated, or deleted. Controllers would need their own hooks into
+every write path. Plugins would need special integration points. That approach
+quickly becomes difficult to maintain. 
+
+The event bus provides a single communication channel between the parts of the
+framework. Storage only needs to announce that something changed. It does not
+need to know whether the consumer is an HTTP client watching a stream, a
+controller reconciling state, or a plugin reacting to changes. Producers and
+consumers remain independent.
+
+The design requirement for the bus is that event delivery must never interfere
+with normal API operations. A client connected through a watch endpoint may be
+slow because of network latency, a controller may temporarily process events
+slowly, or a plugin may stop consuming events altogether. None of those cases
+should prevent another API request from creating or updating a resource.
+
+To achieve this, the implementation separates publishing from delivery. Calls to
+`Publish()` only place events into an internal buffered queue and return
+immediately. A dedicated publishing loop consumes that queue and distributes
+events to interested subscribers. The publisher never waits for a subscriber to
+read an event.
+
+Each subscriber receives its own buffered channel. This creates isolation
+between consumers: one slow subscriber cannot fill a shared queue and delay
+everyone else. When an event is distributed, the bus attempts to deliver it to
+each subscriber independently. If a subscriber's buffer is temporarily full, the
+event is skipped for that subscriber rather than blocking the entire system.
+
+The trade-off is intentional. This event bus prioritizes availability and
+responsiveness over guaranteed delivery. It behaves like a notification system:
+subscribers learn that something changed and can then retrieve the current state
+if needed. This is a common pattern in distributed systems because it prevents a
+single unhealthy consumer from affecting the rest of the platform.
+
+The `EventBus` interface defines the contract used by the rest of the server.
+Storage implementations only depend on `Publish()`, while future components such
+as controllers and watch handlers use `Subscribe()`. Because the interface is
+small, the underlying implementation can later be replaced with a distributed
+message broker, persistent queue, or external event system without changing the
+resource framework.
+
+`SimpleEventBus` provides the in-memory implementation used by the server. It
+maintains a list of subscriptions grouped by resource name. When an event is
+published, only subscribers interested in that resource receive it. A watcher
+for `orders`, for example, will not receive events generated by `users` or
+`products`.
+
+The constructor creates the internal subscriber map, the buffered publishing
+queue, and the shutdown channel. It also starts the background publishing loop.
+From this point onward, event handling happens independently from HTTP request
+processing.
+
+`Subscribe()` creates a new subscription and assigns it a private buffered
+channel. The returned `Subscription` exposes a read-only event channel to the
+consumer while keeping internal control channels private. This prevents
+subscribers from accidentally interfering with the event bus lifecycle.
+
+`Unsubscribe()` removes a subscriber from the registry and closes its event
+channel. Closing the channel is important because it allows consumers such as
+watch handlers and controllers to detect that no more events will arrive and
+cleanly terminate.
+
+The publishing loop is responsible for consuming events from the queue. Instead
+of performing fan-out directly inside the loop, it starts a separate goroutine
+for each event. This extra layer ensures that event distribution itself cannot
+slow down future publishing. The loop can continue accepting new events while
+previous events are still being delivered.
+
+The `fanOut()` method copies the current subscriber list before sending events.
+The copy is important because subscribers can be added or removed concurrently.
+The bus does not hold its lock while writing to subscriber channels, since doing
+so could turn a slow consumer into a global bottleneck.
+
+Finally, `Close()` provides controlled shutdown behavior. It marks the bus as
+closed, stops accepting new events, signals the publishing loop to terminate,
+and closes all remaining subscriptions. This allows the server to shut down
+without leaving background goroutines running or leaving consumers waiting
+forever.
+
+Together, the event model and event bus establish the foundation for the next
+features in the framework. Storage operations now have a standard way to
+announce changes, and higher-level components can react asynchronously without
+creating direct dependencies throughout the codebase. The server has moved from
+simply serving data to becoming a platform capable of supporting controllers,
+streaming clients, and automated reconciliation.
+
 
 **Listing 13.2 — `pkg/api/eventbus.go`**
 
@@ -5443,15 +5689,43 @@ import (
 	"sync"
 )
 
-// EventBus is the pub/sub interface for resource events.
+// EventBus is the publish/subscribe interface for resource events.
+//
+// The EventBus is the nervous system of the framework:
+// - Storage publishes events when resources change
+// - Watch endpoints subscribe and stream to clients
+// - Controllers subscribe and process events asynchronously
+//
+// It enables decoupled, event-driven architecture.
 type EventBus interface {
+	// Publish sends an event to all subscribers of that resource.
+	// Non-blocking - publishers never wait for subscribers.
 	Publish(event Event)
+
+	// Subscribe registers a client for events on a specific resource.
+	// Returns a Subscription that delivers events through a channel.
+	// Multiple subscribers can listen to the same resource simultaneously.
 	Subscribe(resource string) *Subscription
+
+	// Unsubscribe removes a subscription.
+	// Safe to call multiple times.
 	Unsubscribe(subscription *Subscription)
+
+	// Close shuts down the event bus and closes all subscriptions.
 	Close() error
 }
 
 // SimpleEventBus implements EventBus with goroutines and channels.
+//
+// Architecture:
+// - One goroutine per subscription (drains events from its channel)
+// - One publish goroutine per event (fans out to all subscribers)
+// - Thread-safe using sync.RWMutex for subscriber management
+//
+// This design ensures:
+// - Slow subscribers don't block publishers or other subscribers
+// - Publishers never block
+// - Clean shutdown with proper resource cleanup
 type SimpleEventBus struct {
 	mu           sync.RWMutex
 	subscribers  map[string][]*Subscription
@@ -5460,17 +5734,23 @@ type SimpleEventBus struct {
 	closed       bool
 }
 
+// NewEventBus creates a new event bus.
 func NewEventBus() EventBus {
 	bus := &SimpleEventBus{
 		subscribers:  make(map[string][]*Subscription),
 		publishQueue: make(chan Event, 1000),
 		done:         make(chan struct{}),
 	}
+
+	// Start the publisher goroutine
 	go bus.publishLoop()
+
 	return bus
 }
 
-// Publish enqueues an event and returns immediately (never blocks).
+// Publish enqueues an event for publishing.
+// Non-blocking - returns immediately.
+// If bus is closed, event is discarded silently.
 func (b *SimpleEventBus) Publish(event Event) {
 	b.mu.RLock()
 	if b.closed {
@@ -5478,51 +5758,71 @@ func (b *SimpleEventBus) Publish(event Event) {
 		return
 	}
 	b.mu.RUnlock()
+
 	select {
 	case b.publishQueue <- event:
 	case <-b.done:
+		// Bus is closed, discard event silently
 	}
 }
 
-// Subscribe registers a listener for one resource.
+// Subscribe creates a new subscription for events on a resource.
 func (b *SimpleEventBus) Subscribe(resource string) *Subscription {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Create buffered channel (subscribers should drain quickly, but buffer
+	// for brief delays to avoid unnecessary goroutines waiting).
 	sendCh := make(chan Event, 100)
-	sub := &Subscription{Resource: resource, Events: sendCh, done: make(chan struct{}), sendCh: sendCh}
+
+	sub := &Subscription{
+		Resource: resource,
+		Events:   sendCh,
+		done:     make(chan struct{}),
+		sendCh:   sendCh,
+	}
+
 	b.subscribers[resource] = append(b.subscribers[resource], sub)
 	log.Printf("Subscribe: %s (now %d watchers)", resource, len(b.subscribers[resource]))
+
 	return sub
 }
 
-// Unsubscribe removes a subscription. Safe to call multiple times.
+// Unsubscribe removes a subscription.
 func (b *SimpleEventBus) Unsubscribe(sub *Subscription) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	subs, exists := b.subscribers[sub.Resource]
-	if !exists {
-		return
-	}
-	for i, s := range subs {
-		if s == sub {
-			select {
-			case <-sub.done:
-			default:
-				close(sub.sendCh)
+
+	if subs, exists := b.subscribers[sub.Resource]; exists {
+		for i, s := range subs {
+			if s == sub {
+				// Close the send channel
+				select {
+				case <-sub.done:
+				default:
+					close(sub.sendCh)
+				}
+
+				// Remove from list
+				b.subscribers[sub.Resource] = append(subs[:i], subs[i+1:]...)
+
+				log.Printf("Unsubscribe: %s (now %d watchers)", sub.Resource, len(b.subscribers[sub.Resource]))
+				return
 			}
-			b.subscribers[sub.Resource] = append(subs[:i], subs[i+1:]...)
-			log.Printf("Unsubscribe: %s (now %d watchers)", sub.Resource, len(b.subscribers[sub.Resource]))
-			return
 		}
 	}
 }
 
-// publishLoop drains the queue and fans out each event in its own goroutine.
+// publishLoop runs in a goroutine and handles event distribution.
+// It ensures publishers never block by running distribution in separate goroutines.
 func (b *SimpleEventBus) publishLoop() {
 	for {
 		select {
 		case event := <-b.publishQueue:
+			// Fan out to subscribers in a separate goroutine
+			// This prevents any subscriber from blocking others
 			go b.fanOut(event)
+
 		case <-b.done:
 			close(b.publishQueue)
 			return
@@ -5530,25 +5830,36 @@ func (b *SimpleEventBus) publishLoop() {
 	}
 }
 
-// fanOut delivers one event to all subscribers of its resource.
+// fanOut distributes an event to all subscribers of a resource.
+// Runs in a separate goroutine per event.
 func (b *SimpleEventBus) fanOut(event Event) {
 	b.mu.RLock()
 	subscribers := b.subscribers[event.Resource]
+
+	// Make a copy of the subscriber list to avoid holding the lock
+	// while sending to channels (which could block if subscribers are slow)
 	subs := make([]*Subscription, len(subscribers))
 	copy(subs, subscribers)
 	b.mu.RUnlock()
 
+	// Send to each subscriber
 	for _, sub := range subs {
 		select {
 		case sub.sendCh <- event:
 		case <-sub.done:
+			// Subscriber closed, skip
 		default:
+			// Channel full or closed - this shouldn't happen with our buffer,
+			// but if it does, we log it and continue (one slow subscriber
+			// doesn't block others)
 			log.Printf("Event queue full for subscriber: %s", event.Resource)
 		}
 	}
 }
 
-// Close shuts down the bus and all subscriptions. Safe to call multiple times.
+// Close shuts down the event bus.
+// It will no longer publish events and closes all subscriptions.
+// Safe to call multiple times.
 func (b *SimpleEventBus) Close() error {
 	b.mu.Lock()
 	if b.closed {
@@ -5558,8 +5869,10 @@ func (b *SimpleEventBus) Close() error {
 	b.closed = true
 	b.mu.Unlock()
 
+	// Signal done to publishLoop and any waiting Publish calls
 	close(b.done)
 
+	// Close all subscriptions
 	b.mu.Lock()
 	for _, subs := range b.subscribers {
 		for _, sub := range subs {
@@ -5568,16 +5881,92 @@ func (b *SimpleEventBus) Close() error {
 	}
 	b.subscribers = make(map[string][]*Subscription)
 	b.mu.Unlock()
+
 	return nil
 }
 ```
 
-If you used the temporary `EventBus` stub from Chapter 6, delete it now — this is the
-real definition. The `SetEventBus`/publish code in `MemoryStorage` and the
-`RegisterResource` wiring in `Server` now come alive: every create, update, and delete
-publishes an event.
+ADD EVENTBUS CODE TO THE SEVER HERE!!!
 
 **Figure 13.2 — Why publishers never block**
+
+The key design property of the event bus is that resource mutations are not tied
+to the speed of event consumers. A client creating an object should receive a
+successful response as soon as the storage operation completes. It should not
+have to wait for watchers, controllers, or plugins to process the resulting
+event.
+
+The sequence above shows the path of a normal create request and where the event
+system is intentionally decoupled from the request path.
+
+The process begins when an HTTP handler receives a request and calls the storage
+layer. The handler is responsible for validating the request and asking storage
+to create the object. Storage performs the write operation and, after the object
+has been successfully stored, publishes an event describing the change.
+
+At this point, the event bus does not immediately deliver the event to
+subscribers. Instead, `Publish()` places the event into the buffered
+`publishQueue`. Because the queue already has memory allocated for pending
+events, the publish call normally completes immediately. Storage does not wait
+for the event to reach watchers or controllers.
+
+Once the event has been queued, storage returns success to the handler. The
+handler can complete the HTTP request and send the response back to the client.
+The time required for a subscriber to receive or process the event has no impact
+on the latency of the original API request.
+
+In the background, the `publishLoop` continuously reads events from the queue.
+This separates event processing from the request lifecycle. The loop can process
+events at its own pace while new API requests continue creating, updating, and
+deleting resources.
+
+When the publishing loop receives an event, it starts the fan-out process in a
+separate goroutine. That goroutine is responsible for sending the event to each
+subscriber interested in the resource. Because fan-out happens independently,
+the publisher loop can continue accepting additional events even if delivery of a
+previous event is still in progress.
+
+Each subscriber also has its own buffered channel. This provides another layer
+of isolation. A slow watch client consuming `orders` events does not prevent
+another client watching `users` from receiving updates. Likewise, a controller
+that temporarily falls behind does not delay API writes.
+
+The overall flow is therefore:
+
+```
+HTTP request
+     |
+     v
+Storage mutation
+     |
+     v
+Publish(event)
+     |
+     v
+Buffered event queue
+     |
+     v
+Background publish loop
+     |
+     v
+Independent fan-out
+     |
+     v
+Subscriber buffers
+```
+
+This architecture intentionally separates the synchronous path from the
+asynchronous path. The synchronous path handles the operation the user asked
+for: creating, updating, or deleting a resource. The asynchronous path handles
+everything that happens because of that change: notifying watchers, triggering
+controllers, and allowing extensions to react.
+
+This separation is what allows the API server to scale from a simple CRUD
+service into an extensible platform. New event consumers can be added without
+changing storage, HTTP handlers, or existing resources, because the event bus
+acts as a stable boundary between the core API and the components that react to
+changes.
+
 
 ```mermaid
 sequenceDiagram
@@ -5595,8 +5984,8 @@ sequenceDiagram
 
 ### Checkpoint
 
-Add a test that subscribes, creates an object through storage, and asserts an `ADDED`
-event arrives:
+Add a test that subscribes, creates an object through storage, and asserts an
+`ADDED` event arrives:
 
 ```go
 func TestStoragePublishes(t *testing.T) {
@@ -5629,108 +6018,413 @@ Events now flow. Next we let clients watch them.
 
 ### Goal
 
-Stream events to HTTP clients using Server-Sent Events (SSE) via `?watch=true`, and
-teach `apictl` to consume that stream.
+Stream events to HTTP clients using Server-Sent Events (SSE) via `?watch=true`,
+and teach `apictl` to consume that stream.
+
 
 ### Server side: the watch handler
 
-Recall that `list` already branches to `watch` when `?watch=true`. Here is `watch`. It
-subscribes, sets SSE headers, and streams events until the client disconnects, with a
-keep-alive comment every five seconds.
+The Watch API is the point where the event system becomes visible to API
+clients. Up to this point, events have existed entirely inside the server:
+storage published them, and the event bus distributed them to subscribers. The
+watch endpoint exposes that stream over HTTP so external clients can observe
+resource changes as they happen.
+
+The implementation uses Server-Sent Events (SSE), a standard browser and
+HTTP-friendly streaming format. Unlike normal REST requests, where a client
+sends a request and receives a single response, an SSE connection remains open.
+The server can continue writing new messages to the same connection whenever an
+event occurs.
+
+A client starts watching by requesting a resource with the `watch=true` query
+parameter:
+
+```
+GET /api/orders?watch=true
+```
+
+Instead of returning the current list of orders and closing the connection, the
+server creates a subscription to the event bus for the `orders` resource. From
+that moment onward, every create, update, or delete event for orders can be sent
+directly to the client.
+
+The handler begins by verifying that the HTTP response writer supports
+streaming. Go's HTTP server exposes this capability through the `http.Flusher`
+interface. Without flushing, data may remain buffered and the client would not
+receive events immediately. SSE depends on each event being written and flushed
+as soon as it is available.
+
+After confirming streaming support, the handler subscribes to the event bus
+using the resource name. This is the same event stream used internally by
+controllers and other framework components. The watch endpoint does not create
+its own notification system; it is simply another consumer of the existing event
+bus.
+
+The subscription is removed with `defer` when the handler exits. This cleanup is
+important because HTTP clients can disappear at any time: a user may close a
+terminal, a browser tab may be closed, or a network connection may be
+interrupted. Removing the subscription prevents abandoned watchers from
+accumulating in memory.
+
+The response headers tell the client that this is an SSE stream rather than a
+normal JSON response. The `text/event-stream` content type is required by the
+SSE specification. Disabling caching ensures that intermediaries do not replay
+old events, and keeping the connection alive allows the stream to remain open
+for as long as the client is watching.
+
+Once the headers are configured, the handler sends an initial comment:
+
+```
+:connected to watch stream for orders
+```
+
+SSE comments are ignored by clients, but they serve two useful purposes. They
+confirm that the connection has been established and they force an initial
+flush, allowing the client to detect that the watch request succeeded.
+
+The main loop then waits for three possible events:
+
+1. A resource event arrives from the subscription.
+2. The keep-alive timer fires.
+3. The client disconnects.
+
+When a resource event arrives, it is serialized as JSON and written using the
+SSE format:
+
+```
+event: ADDED
+data: {"type":"ADDED","resource":"orders",...}
+
+```
+
+The `event` line identifies the event type. Clients can use this value to handle
+different changes differently, such as displaying new objects for `ADDED` events
+or refreshing state after `MODIFIED` events. The `data` line contains the actual
+event payload. A blank line marks the end of one SSE message.
+
+The handler flushes after every event. This is what makes the API a real-time
+stream rather than a buffered response. As soon as storage publishes an event,
+the event travels through the event bus and appears on the connected client.
+
+Long-lived HTTP connections can be closed by proxies, load balancers, or network
+equipment when no data is transferred for an extended period. To prevent this,
+the handler sends a keep-alive comment every five seconds:
+
+```
+:keep-alive
+```
+
+Comments do not represent application events and are ignored by SSE clients, but
+they keep the connection active and demonstrate that the server is still alive.
+
+The final case monitors the request context. When the client disconnects, Go
+cancels the request context, allowing the handler to exit cleanly. This closes
+the watch loop and triggers the deferred unsubscribe operation.
+
+The complete flow is therefore:
+
+```
+Client
+  |
+  | GET /api/orders?watch=true
+  v
+Watch handler
+  |
+  | Subscribe("orders")
+  v
+Event bus
+  |
+  | Event{ADDED, MODIFIED, DELETED}
+  v
+SSE stream
+  |
+  v
+Client receives updates
+```
+
+The important architectural point is that the Watch API does not poll storage. A
+polling implementation would repeatedly ask, "has anything changed?" and would
+either waste resources or introduce delays. The SSE watch path is fully
+event-driven: storage announces changes once, and every interested client
+receives those changes immediately.
+
+This same mechanism also provides the foundation for future controllers and
+automation. A controller can subscribe directly to the event bus inside the
+server, while external tools such as `apictl` can consume the same stream
+through HTTP. The event model remains the same regardless of whether the
+consumer is internal or external.
+
 
 **Listing 14.1 — `pkg/api/router.go` (watch)**
 
 ```go
-// watch handles GET /api/{resource}?watch=true using Server-Sent Events.
+// watch handles GET /api/{resource}?watch=true
+// Streams events as they occur using Server-Sent Events (SSE).
+//
+// This is the Watch API in action:
+// 1. Client connects with ?watch=true
+// 2. Handler subscribes to the event bus for this resource
+// 3. Events are streamed to client as they occur
+// 4. No polling needed - truly event-driven
 func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client supports Server-Sent Events (requires HTTP/1.1)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusNotAcceptable)
 		return
 	}
 
+	// Subscribe to events for this resource
 	sub := r.eventBus.Subscribe(resource.Name())
 	defer r.eventBus.Unsubscribe(sub)
 
+	// Set headers for Server-Sent Events
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Notify client that watch is starting
 	fmt.Fprintf(w, ":connected to watch stream for %s\n\n", resource.Name())
 	flusher.Flush()
 
-	keepAlive := time.NewTicker(5 * time.Second)
-	defer keepAlive.Stop()
+	// Keep-alive ticker: send comment every 5 seconds to prevent timeout
+	keepAliveTicker := time.NewTicker(5 * time.Second)
+	defer keepAliveTicker.Stop()
 
+	// Stream events until client disconnects
 	for {
 		select {
 		case event := <-sub.Events:
+			// Serialize event to JSON
 			eventJSON, err := json.Marshal(event)
 			if err != nil {
 				log.Printf("error marshalling event: %v", err)
 				continue
 			}
+
+			// Send as SSE
 			fmt.Fprintf(w, "event: %s\n", event.Type)
 			fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
 			flusher.Flush()
-		case <-keepAlive.C:
+
+		case <-keepAliveTicker.C:
+			// Send keep-alive comment to prevent timeout
+			// SSE spec: lines starting with ':' are comments and ignored by clients
 			fmt.Fprintf(w, ":keep-alive\n\n")
 			flusher.Flush()
+
 		case <-req.Context().Done():
-			return // client disconnected
+			// Client disconnected
+			return
 		}
 	}
 }
-```
 
-The SSE wire format is simple text: `event: TYPE`, then `data: JSON`, then a blank
-line. Lines beginning with `:` are comments (used for keep-alives).
+```
 
 ### Client side: consuming SSE
 
-The client reads the stream line by line with a `bufio.Reader` (not `bufio.Scanner`,
-to avoid the 64 KiB line limit) and pushes parsed events onto a channel.
+### Client side: consuming SSE
+
+The server-side watch endpoint turns resource changes into a continuous HTTP
+stream. The client needs the opposite piece of functionality: it must keep the
+connection open, understand the SSE wire format, and convert incoming messages
+into a form that application code can consume.
+
+The `Watch` method adds streaming support to the client library without exposing
+the details of HTTP connections, buffering, or SSE parsing to callers. A caller
+simply requests a watch for a resource and receives channels containing parsed
+events.
+
+The implementation deliberately uses `bufio.Reader` rather than `bufio.Scanner`.
+Although `Scanner` is convenient for reading line-oriented protocols, it has a
+default maximum token size of 64 KiB. That limit is usually fine for simple text
+files, but it is a poor fit for an API streaming protocol where an event payload
+may contain a large object, a complex custom resource, or embedded data. A large
+JSON document could exceed the scanner limit and cause an otherwise valid watch
+connection to fail.
+
+`bufio.Reader` provides more control because it reads directly from the stream
+and allows the client to process lines without imposing the scanner's fixed
+token limit. This makes the watch client more suitable for the dynamic resources
+supported by the framework.
+
+The client starts by creating a normal HTTP GET request with the `watch=true`
+query parameter:
+
+```text
+GET /api/orders?watch=true
+Accept: text/event-stream
+```
+
+The `Accept` header tells the server that the client expects an SSE response.
+Unlike normal API calls, the response does not complete after a single JSON
+document. The HTTP connection remains open while the server sends events.
+
+Before starting the reader goroutine, the method checks the HTTP response
+status. Connection failures and HTTP errors are returned immediately because
+there is no useful stream to consume in those cases. This keeps startup errors
+separate from errors that happen later while processing an active stream.
+
+Once the connection is established, the method creates two channels:
+
+* `Events` carries successfully parsed watch events.
+* `Errors` carries asynchronous problems that occur after the stream has started.
+
+This channel-based design lets callers integrate watching into normal Go
+concurrency patterns. A program can process events in one goroutine, monitor
+errors in another, or combine the watch stream with other channels using a
+`select` statement.
+
+The actual stream processing happens in a background goroutine. This prevents
+the caller from being blocked inside the HTTP reader and allows the application
+to continue performing other work while events arrive.
+
+The reader processes the SSE stream one line at a time. SSE messages are simple:
+a message contains fields such as:
+
+```text
+event: ADDED
+data: {"type":"ADDED","resource":"orders",...}
+
+```
+
+The client keeps track of the most recent `event:` line in `currentType`. When a
+`data:` line arrives, it combines the event type and payload into a `WatchEvent`
+value and sends it to the event channel.
+
+Empty lines separate SSE messages and are ignored. Lines beginning with `:` are
+comments generated by the server's keep-alive mechanism. These comments are
+important for maintaining the connection but do not represent application
+events, so the client discards them.
+
+The reader also handles connection lifecycle events. If the server closes the
+connection normally, the goroutine exits and closes both channels. If a network
+failure or parsing problem occurs, the error is sent through the error channel
+so the caller can decide whether to retry, log the issue, or terminate.
+
+Event delivery uses a buffered channel with a small timeout. This prevents the
+reader goroutine from becoming permanently blocked if the application consuming
+events stops reading. Similar to the server-side event bus, the client favors
+continued operation over allowing one slow consumer to stall the entire
+pipeline. If the application cannot keep up, an error notification is generated
+instead of freezing the watch connection.
+
+The overall client-side flow is:
+
+```text
+HTTP response stream
+        |
+        v
+bufio.Reader
+        |
+        v
+SSE line parser
+        |
+        +----------------+
+        |                |
+        v                v
+Events channel      Errors channel
+        |
+        v
+Application logic
+```
+
+This keeps the SSE implementation isolated inside the client library. Command
+implementations, automation tools, and future controllers do not need to know
+anything about HTTP streaming or text parsing. They receive structured
+`WatchEvent` values and can focus only on what should happen when a resource
+changes.
+
+With this addition, the framework now supports the complete event path:
+
+```text
+Resource change
+      |
+      v
+Storage
+      |
+      v
+EventBus
+      |
+      v
+Watch API (SSE)
+      |
+      v
+apictl / external clients
+```
+
+The server can now notify clients in real time, and clients can consume those
+notifications using the same discovery-driven model used for all other API
+operations.
+
 
 **Listing 14.2 — `cmd/apictl/client.go` (Watch)**
 
 ```go
 // add these imports to client.go: "bufio", "strings", "time"
 
-// WatchEvent is one event from the stream.
+// WatchEvent represents a single event from the watch stream.
 type WatchEvent struct {
 	Type string          `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
 
-// WatchResult bundles event and error channels.
+// WatchResult bundles event and error channels for watch streaming.
+// Callers should range over Events and check Errors for problems.
 type WatchResult struct {
 	Events <-chan WatchEvent
 	Errors <-chan error
 }
 
-// Watch streams events for a resource via SSE.
+// Watch streams events for a resource.
+// Returns event and error channels.
+// The caller should range over Events and check Errors for issues:
+//
+//	result := client.Watch("orders")
+//	for {
+//		select {
+//		case event := <-result.Events:
+//			// Handle event
+//		case err := <-result.Errors:
+//			// Handle error (connection closed, parse error, etc.)
+//			return
+//		}
+//	}
+//
+// Errors include:
+// - Connection failures
+// - Server errors
+// - Parse errors
+// - Line size overruns (no 64 KiB limit)
 func (c *Client) Watch(resource string) (*WatchResult, error) {
 	url := c.baseURL + fmt.Sprintf("/api/%s?watch=true", resource)
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
 	}
+
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Create channels for events and errors
 	events := make(chan WatchEvent, 10)
 	errors := make(chan error, 1)
 
+	// Start goroutine to read events using bufio.Reader instead of Scanner
+	// This avoids the 64 KiB token limit and gives us better control
 	go func() {
 		defer resp.Body.Close()
 		defer close(events)
@@ -5738,55 +6432,150 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 
 		reader := bufio.NewReader(resp.Body)
 		var currentType string
+
 		for {
+			// Read line with no size limit (unlike Scanner's 64 KiB default)
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
+					// Normal connection close
 					return
 				}
+				// Network or parsing error
 				select {
 				case errors <- fmt.Errorf("read error: %w", err):
 				default:
 				}
 				return
 			}
-			line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 
+			// Remove trailing newline
+			line = strings.TrimSuffix(line, "\n")
+			line = strings.TrimSuffix(line, "\r")
+
+			// SSE format: event: TYPE\ndata: JSON\n\n
 			if strings.HasPrefix(line, "event: ") {
 				currentType = strings.TrimPrefix(line, "event: ")
 			} else if strings.HasPrefix(line, "data: ") {
 				data := strings.TrimPrefix(line, "data: ")
+				event := WatchEvent{
+					Type: currentType,
+					Data: json.RawMessage(data),
+				}
 				select {
-				case events <- WatchEvent{Type: currentType, Data: json.RawMessage(data)}:
+				case events <- event:
 				case <-time.After(100 * time.Millisecond):
+					// Event channel full, drop and log
 					select {
 					case errors <- fmt.Errorf("event channel full, dropping event"):
 					default:
 					}
 				}
+			} else if line != "" {
+				// Non-comment lines (not starting with ':') are skipped
+				_ = strings.HasPrefix(line, ":")
 			}
-			// blank lines and ':' comments are ignored
+			// Ignore empty lines and comments (lines starting with :)
 		}
 	}()
 
-	return &WatchResult{Events: events, Errors: errors}, nil
+	return &WatchResult{
+		Events: events,
+		Errors: errors,
+	}, nil
 }
+
 ```
 
 ### Client side: the watch command
 
-Replace the Chapter-9 stub with the real command.
+The final piece of the watch feature is the command-line interface. The server
+can now publish events and the client library can consume the SSE stream, but
+users still need a convenient way to access that functionality. The `watch`
+command connects these two pieces together.
+
+Unlike commands such as `get` or `list`, which perform a single request and
+exit, `watch` is a long-running command. It establishes a connection to the API
+server and remains active while events continue to arrive. This makes it useful
+for observing resource changes in real time, debugging controllers, or
+monitoring activity on a particular resource type.
+
+The command first validates that a resource name was provided. Watching without
+a resource would not be meaningful because the server subscribes to events for a
+specific resource stream. After validation, it creates a watch connection
+through the client's `Watch` method and receives the pair of channels returned
+by that method: one for incoming events and one for errors.
+
+Once connected, the command enters a `select` loop. This is important because
+events and errors are delivered asynchronously. The event channel may receive
+multiple resource changes over time, while the error channel reports connection
+failures or parsing problems. By waiting on both channels, the CLI remains
+responsive and can terminate cleanly when the server closes the connection.
+
+When an event arrives, the command prints the event type first. Event types such
+as `ADDED`, `MODIFIED`, and `DELETED` provide immediate context about what
+changed. The event payload is then decoded from JSON and printed using
+`json.MarshalIndent`, producing readable multi-line output instead of a single
+compact JSON object. This makes the watch stream practical for humans using the
+terminal.
+
+For example, creating a new object while another terminal is running a watch
+command produces an immediate notification:
+
+```text
+$ apictl watch invoices
+Watching events for invoices (Ctrl+C to stop)...
+
+EVENT: ADDED
+{
+  "id": "inv-001",
+  "customer": "Acme Corp",
+  "amount": 5000,
+  "status": "sent"
+}
+```
+
+The command does not need to know the structure of the resource being watched.
+Just like the rest of the discovery-driven client, it treats events generically.
+A built-in resource, a CRD-backed object, or a plugin-provided type all flow
+through the same event path.
+
+This completes the event pipeline introduced in this chapter:
+
+```
+Resource change
+      |
+      v
+MemoryStorage
+      |
+      v
+EventBus.Publish()
+      |
+      v
+Watch API (SSE stream)
+      |
+      v
+apictl watch
+```
+
+The result is a fully event-driven client experience. Instead of repeatedly
+polling the server for changes, users and automation tools can subscribe once
+and receive updates as they happen. This same mechanism also provides the
+foundation for future controllers and operators, which can consume the same
+event stream and react automatically to changes in cluster state.
 
 **Listing 14.3 — `cmd/apictl/commands.go` (cmdWatch)**
 
 ```go
-// cmdWatch streams events for a resource and pretty-prints them.
+// cmdWatch streams events for a resource
 func cmdWatch(c *Client, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "Usage: apictl watch <resource>\n")
 		os.Exit(1)
 	}
+
 	resource := args[0]
+
 	fmt.Printf("Watching events for %s (Ctrl+C to stop)...\n\n", resource)
 
 	result, err := c.Watch(resource)
@@ -5794,22 +6583,31 @@ func cmdWatch(c *Client, args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	for {
 		select {
 		case event, ok := <-result.Events:
 			if !ok {
+				// Events channel closed
 				return
 			}
+
+			// Print event type
 			fmt.Printf("EVENT: %s\n", event.Type)
+
+			// Parse and pretty-print the object
 			var obj interface{}
 			if err := json.Unmarshal(event.Data, &obj); err != nil {
 				fmt.Printf("Error parsing event data: %v\n", err)
 				continue
 			}
+
 			data, _ := json.MarshalIndent(obj, "", "  ")
 			fmt.Printf("%s\n\n", string(data))
+
 		case err, ok := <-result.Errors:
 			if !ok {
+				// Errors channel closed
 				return
 			}
 			if err != nil {
@@ -5819,22 +6617,74 @@ func cmdWatch(c *Client, args []string) {
 		}
 	}
 }
+
 ```
 
 ### Checkpoint
 
+At this point, the complete event pipeline can be tested from the command line.
+The easiest way to verify that the watch system is working is to run the watcher
+and the operation that generates events in separate terminals.
+
+In the first terminal, start a watch stream for a resource type:
+
 ```bash
 # terminal 1
 ./apictl watch orders
+```
 
+The command does not make repeated requests to the server. Instead, it opens a
+long-lived SSE connection and waits for the event bus to publish changes. The
+terminal remains attached to the resource stream until the user stops it with
+`Ctrl+C` or the server closes the connection.
+
+In a second terminal, create a new object:
+
+```bash
 # terminal 2
 ./apictl create -f examples/order-1.json
 ```
 
-Terminal 1 prints an `EVENT: ADDED` block within milliseconds — no polling. Try
-`delete` and `create` for other objects and watch them appear live.
+The create request follows the normal API path: the router receives the request,
+the resource storage persists the object, and the storage layer publishes an
+`ADDED` event through the event bus. The watch handler receives that event from
+its subscription and immediately forwards it to the connected client.
 
-An example order file:
+Within milliseconds, the first terminal displays the new event:
+
+```text
+EVENT: ADDED
+{
+  "id": "order-001",
+  "kind": "Order",
+  "customer_id": "alice",
+  "total": 99.99,
+  "status": "draft",
+  "created_at": "2026-07-15T10:30:00Z"
+}
+```
+
+The important detail is that no component in this flow is polling. The client
+does not repeatedly ask whether anything changed, and the server does not need
+to maintain a list of clients waiting for updates. Instead, the event bus acts
+as the connection point between resource changes and interested consumers.
+
+The same test can be repeated with other operations:
+
+```bash
+./apictl delete orders order-001
+./apictl create -f examples/order-1.json
+```
+
+A delete operation produces a `DELETED` event, while another create produces a
+new `ADDED` event. If the resource supports updates, modifications would appear
+as `MODIFIED` events.
+
+The example object below represents a typical resource instance. It
+intentionally contains only application data and the metadata needed by the API
+framework. The watch system does not require a compiled `Order` type or any
+special knowledge of the fields. It simply transports the object associated with
+the event.
 
 **Listing 14.4 — `examples/order-1.json`**
 
@@ -5849,17 +6699,159 @@ An example order file:
 }
 ```
 
+This checkpoint demonstrates the complete path from a user action to a live
+notification:
+
+```text
+apictl create
+      |
+      v
+HTTP API handler
+      |
+      v
+Resource storage
+      |
+      v
+EventBus.Publish(ADDED)
+      |
+      v
+Watch subscription
+      |
+      v
+apictl watch
+```
+
+With this in place, the API server has moved beyond request/response behavior
+and now supports real-time observation of resource state changes. The same
+mechanism can later power controllers, automation agents, dashboards, and other
+clients that need to react immediately when the API state changes.
+
+
 ---
 
 ## Chapter 15: Controllers
 
 ### Goal
 
-Add server-side reactive logic. A controller subscribes to a resource's events and
-reconciles state — and because its updates go through storage, they emit new events,
-which watch clients see. This closes the loop.
+The event system introduced in the previous chapter gave clients a way to
+observe changes, but observation alone is only the first step toward a reactive
+system. The next step is allowing the server itself to respond to those changes.
+
+Controllers provide this missing piece. A controller is a long-running process
+inside the API server that watches events, evaluates the current state of
+resources, and performs actions to move the system toward the desired state.
+
+This is the same pattern used by systems such as Kubernetes. Instead of placing
+all business logic directly inside HTTP handlers, controllers operate
+independently and react to state changes. The API layer remains responsible for
+accepting requests and storing data, while controllers handle the workflows that
+happen after those changes occur.
+
+For example, an order workflow might look like this:
+
+```text
+Client creates Order
+        |
+        v
+API handler stores object
+        |
+        v
+EventBus publishes ADDED event
+        |
+        v
+OrderController receives event
+        |
+        v
+Controller calculates totals and updates status
+        |
+        v
+Storage.Update()
+        |
+        v
+EventBus publishes MODIFIED event
+        |
+        v
+Watch clients see updated order
+```
+
+The important design property is that controllers do not bypass the normal API
+machinery. When a controller changes a resource, it uses the same storage
+interfaces used by regular API operations. Because those changes flow through
+storage, they automatically produce new events. This means controllers
+participate in the same event pipeline as every other client.
+
+This creates a feedback loop:
+
+1. A resource changes.
+2. An event is published.
+3. A controller reacts.
+4. The controller updates state.
+5. The update produces another event.
+
+That loop is the foundation of a controller-based architecture.
+
+Controllers should also be designed around reconciliation rather than individual
+commands. A controller does not receive instructions such as "set this field" or
+"run this operation." Instead, it receives an event and examines the current
+state of the object. It then determines what actions are necessary to make the
+actual state match the desired state.
+
+This approach has several advantages:
+
+* Controllers are independent of HTTP requests.
+* Business logic can run asynchronously.
+* Multiple controllers can observe the same resource.
+* Failures can be retried safely.
+* New automation can be added without changing API handlers.
 
 ### The controller interface
+
+The `Controller` interface defines the contract between the framework and any
+controller implementation. Like resources and plugins earlier in the book, this
+interface allows the server to host many different controllers without knowing
+their internal details.
+
+A controller has three primary responsibilities:
+
+1. Identify itself.
+2. Declare which resource it watches.
+3. Reconcile events for that resource.
+
+The `Name()` method provides a stable identifier for logging, debugging, and
+controller management. In a system running many controllers, meaningful names
+make it easier to understand which component is processing an event.
+
+The `Resource()` method connects the controller to the event system. A
+controller subscribes to one resource type, such as `orders`, `users`, or
+`invoices`. When events for that resource are published, the framework delivers
+them to the controller.
+
+The core of the controller is the `Reconcile()` method. This method receives an
+event and contains the business logic required to respond to it.
+
+A reconciliation function should be **idempotent**. This means that running the
+same reconciliation multiple times should produce the same result as running it
+once. Event-driven systems may deliver events more than once, controllers may
+restart, and failures may cause retries. Idempotency ensures that these
+situations do not corrupt application state.
+
+For example, an order controller might receive an `ADDED` event:
+
+1. Read the current order state.
+2. Calculate any missing values.
+3. Update the order status from `draft` to `processing`.
+4. Save the updated object through storage.
+5. Allow the normal event pipeline to notify other consumers.
+
+The controller does not directly notify watchers or manually publish events. It
+only changes the resource. The existing storage and event infrastructure handles
+the rest.
+
+The `Run()` method defines the controller lifecycle. Controllers are
+long-running background processes, so they must support clean startup and
+shutdown. The `context.Context` parameter provides a standard Go mechanism for
+cancellation. When the server shuts down, it can cancel the context and allow
+every controller to stop gracefully.
 
 **Listing 15.1 — `pkg/controllers/controller.go`**
 
@@ -5872,118 +6864,213 @@ import (
 	"github.com/pergus/api-server/pkg/api"
 )
 
-// Controller watches events and performs reconciliation. Controllers respond to
-// events, not HTTP requests, which decouples business logic from API handling.
+// Controller is the interface for a reconciliation controller.
+//
+// Controllers are the "brain" of the system - they watch events and
+// perform business logic in response.
+//
+// Example controllers:
+// - OrderController reconciles orders (e.g., calculate totals, update status)
+// - Future: InvoiceController, UserController, etc.
+//
+// The key insight: Controllers do NOT respond to HTTP requests.
+// They respond to events. This decouples business logic from API handling.
 type Controller interface {
+	// Name returns the name of this controller.
+	// Used for logging and debugging.
 	Name() string
+
+	// Resource returns the name of the resource this controller watches.
+	// (e.g., "orders", "invoices", "users")
 	Resource() string
+
+	// Reconcile processes an event and performs reconciliation.
+	// Called when a resource is Added, Modified, or Deleted.
+	//
+	// Reconciliation is the process of observing the current state
+	// and taking action to achieve the desired state.
+	//
+	// Example: When an Order is created, the controller might:
+	// 1. Calculate totals
+	// 2. Update order status to "processing"
+	// 3. Call storage.Update() which generates another event
+	// 4. Other systems react to the modified event
+	//
+	// Reconcile should be idempotent - calling it multiple times
+	// with the same object should be safe.
 	Reconcile(event api.Event) error
+
+	// Run starts the controller.
+	// Should block until context is cancelled.
 	Run(ctx context.Context) error
 }
+
 ```
 
-### The manager and base controller
 
-The manager runs each controller in its own goroutine. `baseController` handles the
-common subscribe/loop/unsubscribe pattern so concrete controllers only write
-`Reconcile`.
+This interface is intentionally small. The framework does not need to know
+whether a controller updates a database, calls an external service, creates
+another resource, or simply records metrics. It only needs to know that the
+controller can start, receive events, and reconcile state.
 
-**Listing 15.2 — `pkg/controllers/manager.go`**
+With this abstraction in place, controllers become another extension point of
+the platform, alongside CRDs and plugins. New behavior can be added by
+implementing a small interface rather than modifying the core API server.
 
-```go
-package controllers
-
-import (
-	"context"
-	"log"
-	"sync"
-
-	"github.com/pergus/api-server/pkg/api"
-)
-
-// ControllerManager runs multiple controllers concurrently.
-type ControllerManager struct {
-	controllers map[string]Controller
-	eventBus    api.EventBus
-	mu          sync.RWMutex
-	subs        map[string]api.Subscription
-}
-
-func New(eventBus api.EventBus) *ControllerManager {
-	return &ControllerManager{
-		controllers: make(map[string]Controller),
-		eventBus:    eventBus,
-		subs:        make(map[string]api.Subscription),
-	}
-}
-
-func (cm *ControllerManager) Register(controller Controller) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	if _, exists := cm.controllers[controller.Name()]; exists {
-		return nil
-	}
-	cm.controllers[controller.Name()] = controller
-	log.Printf("Registered controller: %s", controller.Name())
-	return nil
-}
-
-// Run starts all controllers and blocks until ctx is cancelled.
-func (cm *ControllerManager) Run(ctx context.Context) error {
-	cm.mu.Lock()
-	controllers := make([]Controller, 0, len(cm.controllers))
-	for _, c := range cm.controllers {
-		controllers = append(controllers, c)
-	}
-	cm.mu.Unlock()
-
-	wg := &sync.WaitGroup{}
-	for _, controller := range controllers {
-		wg.Add(1)
-		go func(c Controller) {
-			defer wg.Done()
-			log.Printf("Starting controller: %s", c.Name())
-			if err := c.Run(ctx); err != nil {
-				log.Printf("Controller %s error: %v", c.Name(), err)
-			}
-			log.Printf("Stopped controller: %s", c.Name())
-		}(controller)
-	}
-	wg.Wait()
-	return nil
-}
-
-// baseController implements the subscribe/loop/unsubscribe pattern.
-type baseController struct {
-	name     string
-	resource string
-	eventBus api.EventBus
-}
-
-func (bc *baseController) runLoop(ctx context.Context, reconcile func(event api.Event) error) error {
-	sub := bc.eventBus.Subscribe(bc.resource)
-	defer bc.eventBus.Unsubscribe(sub)
-	log.Printf("[%s] subscribed to %s events", bc.name, bc.resource)
-
-	for {
-		select {
-		case event := <-sub.Events:
-			log.Printf("[%s] received %s event for %s", bc.name, event.Type, event.Resource)
-			if err := reconcile(event); err != nil {
-				log.Printf("[%s] reconcile error: %v", bc.name, err)
-			}
-		case <-ctx.Done():
-			log.Printf("[%s] context cancelled, stopping", bc.name)
-			return nil
-		}
-	}
-}
-```
 
 ### The order controller
 
-When an order is added, this controller sets its status to `processing`, ensures a
-total exists, and persists the change — producing a `MODIFIED` event.
+The order controller is the first concrete example of a reconciliation loop in
+the framework. It demonstrates how a controller consumes events, evaluates
+resource state, and makes changes through the normal storage layer.
+
+The controller watches the `orders` resource and reacts whenever an order
+changes. It does not receive HTTP requests and it does not know anything about
+the client that created the order. Its only input is the stream of events
+generated by the event bus.
+
+The workflow is intentionally simple:
+
+1. A client creates an order.
+2. Storage saves the new object.
+3. Storage publishes an `ADDED` event.
+4. The order controller receives the event.
+5. The controller calculates missing values and updates the order.
+6. Storage publishes a `MODIFIED` event.
+7. Watch clients and other controllers receive the updated state.
+
+This illustrates the core reconciliation pattern: controllers observe state and
+then act to move that state toward a desired condition.
+
+For an order, the desired state is that every newly created order should be
+ready for processing. When the controller sees an `ADDED` event, it performs
+three operations:
+
+* It ensures the order has a status.
+* It ensures a total value exists.
+* It persists the updated order.
+
+The controller does not call the event bus directly. Instead, it uses the
+resource storage interface to update the object. This distinction is important.
+Storage remains the single source of truth for resource changes. Because the
+update goes through storage, the existing event infrastructure automatically
+creates the corresponding `MODIFIED` event.
+
+The controller therefore participates in the same lifecycle as any other client:
+
+```text
+Order created
+      |
+      v
+ADDED event
+      |
+      v
+OrderController reconciles
+      |
+      v
+Storage.Update()
+      |
+      v
+MODIFIED event
+      |
+      v
+Watch clients receive update
+```
+
+The implementation uses a generic `map[string]interface{}` representation rather
+than a dedicated update type. This keeps the controller compatible with the
+dynamic nature of the API server. The same pattern could later be applied to
+CRD-backed resources or plugin-provided types without requiring changes to the
+controller framework.
+
+The `OrderController` embeds `baseController`, which provides the common event
+subscription and run-loop behavior shared by controllers. The order-specific
+logic only needs to implement reconciliation decisions.
+
+When an event arrives, `Reconcile` dispatches based on the event type:
+
+* `ADDED` triggers order initialization.
+* `MODIFIED` records that the order changed.
+* `DELETED` records that the order was removed.
+
+This separation keeps the controller readable. The event routing logic remains
+small, while each state transition has its own focused handler.
+
+The `reconcileAdded` method performs the main business operation. It first
+converts the incoming object into a generic map so fields can be inspected and
+changed. It then updates the order's status to `processing` and supplies a
+default total if one was not provided.
+
+In a production system, this step might contain much more complex behavior:
+
+* Reserving inventory.
+* Calculating taxes.
+* Validating payment information.
+* Calling external fulfillment services.
+* Creating related resources.
+* Updating metrics or analytics systems.
+
+The important part is not the specific business rule. The important part is the
+architecture: the business rule runs independently from the API request that
+created the object.
+
+After modifying the object, the controller looks up the `orders` resource from
+the registry and calls `Storage().Update()`. This is where the reconciliation
+loop connects back into the rest of the framework. The update becomes a normal
+resource mutation, which means the event bus publishes a new event
+automatically.
+
+The `reconcileModified` and `reconcileDeleted` methods intentionally perform
+only logging. They demonstrate how controllers can observe later state changes
+without necessarily making further changes.
+
+This is also an important design consideration. A controller that updates every
+`MODIFIED` event without checking whether an update is actually required can
+create an endless loop:
+
+```text
+MODIFIED event
+      |
+      v
+Controller updates object
+      |
+      v
+Another MODIFIED event
+      |
+      v
+Controller updates object again
+      |
+      v
+(repeats forever)
+```
+
+Controllers must therefore be written with idempotency in mind. A reconciliation
+function should check the current state before making changes. If the object
+already satisfies the desired condition, the controller should do nothing.
+
+For example, instead of always setting:
+
+```text
+status = processing
+```
+
+on every modification, a safer controller would check:
+
+```text
+if status != processing:
+    update status
+else:
+    no action required
+```
+
+This makes reconciliation stable even when events are duplicated, delayed, or
+replayed.
+
+The order controller provides the first complete example of the server becoming
+an active participant in resource management. The API server is no longer just a
+place where clients store and retrieve objects. It can now observe changes,
+apply business rules, and continuously drive resources toward their desired
+state.
 
 **Listing 15.3 — `pkg/controllers/orders.go`**
 
@@ -5997,23 +7084,54 @@ import (
 
 	"github.com/pergus/api-server/pkg/api"
 )
-
-// OrderController reconciles orders.
+// OrderController watches order events and performs reconciliation.
+//
+// Business Logic:
+// - When an order is ADDED: Calculate totals, set status to "processing"
+// - When an order is MODIFIED: Log the change
+// - When an order is DELETED: Log the deletion
+//
+// This demonstrates the reconciliation pattern:
+// 1. Watch for events
+// 2. React to state changes
+// 3. Update state (which generates more events)
+// 4. Other systems react to your updates
+//
+// In a real system, this might also:
+// - Update inventory
+// - Send notifications
+// - Trigger payment processing
+// - Update analytics
 type OrderController struct {
 	baseController
 	registry api.Registry
 }
 
+// NewOrderController creates a new order controller.
+// The registry is used to update orders during reconciliation.
 func NewOrderController(eventBus api.EventBus, registry api.Registry) *OrderController {
 	return &OrderController{
-		baseController: baseController{name: "OrderController", resource: "orders", eventBus: eventBus},
-		registry:       registry,
+		baseController: baseController{
+			name:     "OrderController",
+			resource: "orders",
+			eventBus: eventBus,
+		},
+		registry: registry,
 	}
 }
 
-func (oc *OrderController) Name() string     { return oc.baseController.name }
-func (oc *OrderController) Resource() string { return oc.baseController.resource }
+// Name returns the controller name.
+func (oc *OrderController) Name() string {
+	return oc.baseController.name
+}
 
+// Resource returns the resource this controller watches.
+func (oc *OrderController) Resource() string {
+	return oc.baseController.resource
+}
+
+// Reconcile handles an order event.
+// Implements the business logic for order processing.
 func (oc *OrderController) Reconcile(event api.Event) error {
 	switch event.Type {
 	case api.Added:
@@ -6026,83 +7144,225 @@ func (oc *OrderController) Reconcile(event api.Event) error {
 	return nil
 }
 
+// reconcileAdded handles newly created orders.
+// Sets status to "processing" and calculates totals.
 func (oc *OrderController) reconcileAdded(event api.Event) error {
 	log.Printf("[%s] NEW ORDER - calculating totals and setting status", oc.Name())
 
+	// Parse the order object
 	orderData, err := json.Marshal(event.Object)
 	if err != nil {
 		return err
 	}
+
 	var order map[string]interface{}
 	if err := json.Unmarshal(orderData, &order); err != nil {
 		return err
 	}
-	id, _ := order["id"].(string)
+
+	// Extract order ID
+	id := order["id"].(string)
+
+	// Set status to processing
 	order["status"] = "processing"
+
+	// Calculate total if not already set
+	// (In a real system, this might sum item prices)
 	if _, hasTotal := order["total"]; !hasTotal {
 		order["total"] = 0
 	}
 
+	log.Printf("[%s] Order %s: status=processing, total=$%.2f", oc.Name(), id, order["total"])
+
+	// Update the order in storage
+	// This will generate a MODIFIED event which other watchers will see
 	resource, ok := oc.registry.Lookup("orders")
 	if !ok {
-		return nil // orders resource gone (e.g. shutdown)
+		log.Printf("[%s] orders resource not found", oc.Name())
+		return nil // Resource not registered yet (CRD deletion scenario)
 	}
+
 	if err := resource.Storage().Update(id, order); err != nil {
 		log.Printf("[%s] error updating order %s: %v", oc.Name(), id, err)
-		return nil
+		return nil // Continue processing other events
 	}
-	log.Printf("[%s] Order %s RECONCILED (status=processing)", oc.Name(), id)
+
+	log.Printf("[%s] Order %s RECONCILED (status updated)", oc.Name(), id)
 	return nil
 }
 
+// reconcileModified handles updated orders.
+// Logs the modification for debugging.
 func (oc *OrderController) reconcileModified(event api.Event) error {
 	orderData, _ := json.Marshal(event.Object)
 	var order map[string]interface{}
-	_ = json.Unmarshal(orderData, &order)
-	log.Printf("[%s] Order %v MODIFIED (status=%v)", oc.Name(), order["id"], order["status"])
+	json.Unmarshal(orderData, &order)
+
+	log.Printf("[%s] Order %s MODIFIED (status=%s)", oc.Name(), order["id"], order["status"])
 	return nil
 }
 
+// reconcileDeleted handles deleted orders.
+// Logs the deletion for debugging.
 func (oc *OrderController) reconcileDeleted(event api.Event) error {
 	orderData, _ := json.Marshal(event.Object)
 	var order map[string]interface{}
-	_ = json.Unmarshal(orderData, &order)
-	log.Printf("[%s] Order %v DELETED", oc.Name(), order["id"])
+	json.Unmarshal(orderData, &order)
+
+	log.Printf("[%s] Order %s DELETED", oc.Name(), order["id"])
 	return nil
 }
 
+// Run starts the order controller.
+// Blocks until context is cancelled.
+// Calls reconcile for each event.
 func (oc *OrderController) Run(ctx context.Context) error {
 	return oc.baseController.runLoop(ctx, oc.Reconcile)
 }
 ```
 
-> **Idempotency caution:** the controller updates on `ADDED`, which emits `MODIFIED`,
-> which the controller also receives. Because `reconcileModified` only logs (it does
-> not update again), there is no infinite loop. When you write controllers that update
-> on `MODIFIED`, guard against re-triggering — e.g. skip if the object already matches
-> the desired state.
+
+> **Idempotency caution:** The controller updates an object in response to an
+> `ADDED` event, which creates a `MODIFIED` event that the same controller also
+> receives. In this implementation, `reconcileModified` only logs the change, so
+> the loop stops naturally. Controllers that modify objects during `MODIFIED`
+> reconciliation must guard against unnecessary writes by checking whether the
+> desired state has already been reached before updating.
+
 
 ### Wiring controllers into main()
 
-Add this after the plugin setup in `cmd/api-server/main.go`:
+With the controller implementation complete, the final step is connecting it to
+the running API server. Controllers are long-lived background processes, so they
+need to be created during server startup and given access to the same
+infrastructure used by the rest of the system.
 
+The controller manager acts as the lifecycle owner for controllers. Rather than
+starting each controller independently in `main()`, the server registers
+controllers with the manager and allows it to handle startup, event
+subscriptions, and shutdown behavior. This keeps the entrypoint focused on
+assembling the application rather than managing individual background workers.
+
+The controller manager requires access to the server's event bus because
+controllers are event consumers. They do not poll resources looking for changes.
+Instead, they subscribe to the event stream and react whenever storage publishes
+an update.
+
+The order controller also receives the resource registry. The registry allows it
+to locate the `orders` resource and perform reconciliation updates. When the
+controller changes an order through storage, the normal resource lifecycle
+continues:
+
+```text
+OrderController
+        |
+        v
+Registry.Lookup("orders")
+        |
+        v
+Storage.Update()
+        |
+        v
+EventBus.Publish(MODIFIED)
+        |
+        v
+Watch clients and other controllers
+```
+
+This preserves the framework's central design rule: all resource changes flow
+through the same storage and event infrastructure. Controllers are not a
+separate path around the API server; they are participants in the same
+lifecycle.
+
+The registration step also makes adding future controllers straightforward. A
+future invoice controller, notification controller, or inventory controller can
+be added by creating the controller implementation and registering it with the
+manager. The server startup code does not need to know how those controllers
+work.
+
+Controllers run concurrently with the HTTP server. The manager is started inside
+a goroutine so the API server can continue starting normally and accept requests
+while controllers wait for events in the background.
+
+Using a context for the controller manager also prepares the system for graceful
+shutdown. A production implementation would replace the background context with
+a server-owned context that is cancelled when the process receives a shutdown
+signal. This allows controllers to finish in-flight reconciliation work before
+exiting.
+
+After this change, the server contains all of the major pieces of a
+controller-driven architecture:
+
+```text
+                 +----------------+
+                 |  HTTP Request  |
+                 +-------+--------+
+                         |
+                         v
+                 +---------------+
+                 |    Storage    |
+                 +-------+-------+
+                         |
+                         v
+                 +---------------+
+                 |   Event Bus   |
+                 +-------+-------+
+                         |
+              +----------+----------+
+              |                     |
+              v                     v
+       Watch clients        Controllers
+                                   |
+                                   v
+                              Reconcile
+                                   |
+                                   v
+                              Storage Update
+```
+
+The API server can now do more than store and retrieve objects. It can observe
+changes, execute automated reactions, and continuously maintain resource state. 
 **Listing 15.4 — `cmd/api-server/main.go` (controller additions)**
 
 ```go
-	// Initialize the controller manager and register controllers.
+	// Initialize the controller manager and register controllers
 	log.Println("Initializing controller manager...")
 	manager := controllers.New(server.EventBus())
+	
+	// Register the order controller
+	// It will watch for order events and perform reconciliation
 	if err := manager.Register(controllers.NewOrderController(server.EventBus(), server.Registry())); err != nil {
 		log.Printf("Warning: failed to register OrderController: %v", err)
 	}
+	
+	// Start the controller manager in a goroutine
+	// Controllers run concurrently and respond to events
 	go func() {
-		if err := manager.Run(context.Background()); err != nil {
+		ctx := context.Background()
+		if err := manager.Run(ctx); err != nil {
 			log.Printf("Controller manager error: %v", err)
 		}
 	}()
 ```
 
-Import `github.com/pergus/api-server/pkg/controllers`.
+Import:
+
+```go
+"github.com/pergus/api-server/pkg/controllers"
+```
+
+At startup, the server now initializes resources, loads plugins, starts
+discovery, activates the event system, and launches controllers. The result is a
+complete extensible API platform where new resource types, plugins, event
+consumers, and automation logic can be added without changing the core
+request-handling path.
+
+### The reconciliation loop
+
+The reconciliation loop demonstrates the complete flow of an event-driven resource
+lifecycle. Instead of placing business logic inside the HTTP handler, the API server
+only records the requested state change and publishes an event. Controllers then
+observe those events and decide whether additional actions are required.
 
 **Figure 15.1 — The reconciliation loop**
 
@@ -6122,7 +7382,48 @@ sequenceDiagram
     EB->>W: MODIFIED (status=processing)
 ```
 
+The sequence begins when a client creates an order using `apictl`. The initial object
+contains the state requested by the user — in this example, an order with a `draft`
+status. The API server accepts the request, stores the object, and publishes an
+`ADDED` event through the event bus.
+
+At this point, the event bus fans the event out to every interested subscriber. A
+watch client receives the event immediately and displays the object exactly as it was
+created. At the same time, the `OrderController` receives the same event and begins
+its reconciliation process.
+
+The controller does not modify the original request. Instead, it evaluates the
+current state and applies the desired transition. For a newly created order, the
+controller decides that the order should move from `draft` to `processing`. It writes
+that updated state back through the normal resource storage layer.
+
+Because the controller uses the same storage path as any other update, the change is
+not invisible internal state. The storage layer publishes another event, this time a
+`MODIFIED` event. The event bus again distributes that event to all subscribers,
+including watch clients and any other controllers interested in orders.
+
+This creates a feedback loop:
+
+1. A user creates or changes an object.
+2. The API server stores the new state and publishes an event.
+3. Controllers observe the event and compare the current state with the desired
+   state.
+4. Controllers make changes when reconciliation is required.
+5. Those changes produce new events that continue the loop.
+
+The important property of this design is separation of responsibilities. The API
+server remains generic: it knows how to store resources and publish changes, but it
+does not need to understand order processing rules. The controller owns the business
+logic and can evolve independently. New behaviors can be added by introducing new
+controllers rather than modifying the API layer.
+
+This pattern is the foundation of many large-scale orchestration systems. The system
+does not execute a fixed workflow after every request. Instead, it continuously works
+toward the desired state by reacting to changes as they occur.
+
 ### Checkpoint
+
+The following test demonstrates the complete controller flow in practice:
 
 ```bash
 # terminal 1
@@ -6135,9 +7436,39 @@ sequenceDiagram
 ./apictl create -f examples/order-1.json
 ```
 
-Terminal 2 shows two events for the same order: `ADDED` with `status: draft`, then
-`MODIFIED` with `status: processing`. The controller reacted automatically. You now
-have a complete event-driven platform.
+When the order is created, the watch client receives the first event immediately:
+
+```text
+EVENT: ADDED
+{
+  "id": "order-001",
+  "status": "draft",
+  ...
+}
+```
+
+Shortly afterward, the same watch stream receives a second event:
+
+```text
+EVENT: MODIFIED
+{
+  "id": "order-001",
+  "status": "processing",
+  ...
+}
+```
+
+The first event represents the user's requested state. The second event represents the
+controller's reconciliation action. No additional API call was required from the
+client, and no polling loop was involved. The controller observed the change,
+performed its logic, and the resulting state transition propagated automatically
+through the event system.
+
+At this point the framework has all of the major building blocks of a dynamic
+platform: discovery, runtime resources, plugins, events, watches, and
+controllers. Resources can be added dynamically, clients can discover and
+observe them, and server-side components can continuously react to changes. The
+system has moved from a simple CRUD API into a reactive control plane.
 
 ---
 
