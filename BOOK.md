@@ -1983,7 +1983,7 @@ import (
 // User is a sample resource type.
 type User struct {
 	ID       string `json:"id"`
-	Name     string `json:"name"`
+	Name     string `json:"name"`	
 	Email    string `json:"email"`
 	IsActive bool   `json:"is_active"`
 }
@@ -2255,21 +2255,58 @@ Three resources, full CRUD, all through generic handlers. The core is done.
 
 # Part III — The Client
 
-A server is only half the story. Kubernetes' `kubectl` never hardcodes the list of
-resource types — it asks the API server what exists. We build `apictl` the same way.
+A server is only half the story. Kubernetes' `kubectl` never hardcodes the list
+of resource types — it asks the API server what exists. We build `apictl` the
+same way. 
 
 ## Chapter 8: The apictl Client Library
 
 ### Goal
 
 Create a reusable `Client` type that talks to the server over HTTP, including
-discovery and CRUD, with clean error handling. Then write the CLI entrypoint that
-dispatches subcommands.
+discovery and CRUD, with clean error handling. Then write the CLI entrypoint
+that dispatches subcommands.
 
 ### The client
 
-The client wraps `http.Client` and offers typed helpers. Every call goes through one
-`request` method that turns HTTP error statuses into Go errors.
+So far, all of the work has focused on the server. This chapter introduces the
+other half of the system: a reusable client library that knows how to
+communicate with the API over HTTP. Rather than scattering HTTP requests
+throughout the command-line tool, all communication is collected into a single
+`Client` type with a simple, consistent interface.
+
+The `Client` wraps Go's standard `http.Client` together with the base URL of the
+server. This gives the rest of the application a higher-level API. Instead of
+constructing HTTP requests manually, callers can simply invoke methods such as
+`ListResources`, `GetResource`, or `CreateResource`.
+
+The `NewClient` function creates a client configured to communicate with a
+particular server. From that point on, every request automatically uses the same
+base URL and HTTP client, making the rest of the code simpler and more
+consistent.
+
+The discovery methods mirror the discovery endpoints provided by the server.
+`GetAPIResources` calls `GET /api` to retrieve the names of all registered
+resources. Because the server generates this list from the live registry, the
+client automatically discovers resources that are added at runtime without
+needing any prior knowledge of them.
+
+Similarly, `GetAPIs` retrieves the list of API groups. Although these endpoints
+will not become fully useful until later chapters, adding the client methods now
+establishes a consistent interface that will grow alongside the server.
+
+The CRUD methods provide a higher-level interface for working with resources.
+`ListResources` retrieves every object belonging to a resource type, while
+`GetResource` retrieves a single object by its identifier. `CreateResource`,
+`UpdateResource`, and `DeleteResource` correspond directly to the server's
+generic handlers, hiding the details of HTTP methods and JSON serialization from
+the rest of the application.
+
+Notice that none of these methods know anything about users, products, or
+orders. They all work with generic maps and resource names. This mirrors the
+server's design: just as the router is independent of concrete resource types,
+the client is also independent of them. As long as a resource follows the API
+conventions, the same client methods can communicate with it.
 
 **Listing 8.1 — `cmd/apictl/client.go` (core)**
 
@@ -2414,6 +2451,35 @@ func (c *Client) DeleteResource(resource, id string) error {
 }
 ```
 
+The second part of the file extends the client with operations that will become
+important later in the project. Methods such as `CreateCRD`, `ListCRDs`,
+`DeleteCRD`, and `ListPlugins` correspond to features that will be introduced in
+future chapters. Including them here establishes the overall shape of the client
+while allowing new capabilities to be added without changing its overall design.
+
+The small helper methods, `get`, `post`, `put`, and `delete`, exist purely for
+convenience. They remove repeated code by forwarding every request to a single
+implementation. Instead of every client method creating its own HTTP request,
+they all delegate to the common `request` function.
+
+The `request` method is the heart of the client. It constructs the HTTP request,
+sends it to the server, reads the response body, and performs consistent error
+handling. Every operation in the client eventually passes through this function,
+making it the single place where HTTP communication is implemented.
+
+Centralizing request handling has several advantages. Common headers only need
+to be set once, response bodies are always read the same way, and error handling
+remains consistent across every API call. If the server returns an error status,
+the client attempts to decode the structured error response before returning a
+normal Go `error`. As a result, callers never need to inspect HTTP status codes
+directly—they simply receive an error describing what went wrong.
+
+This separation of responsibilities keeps the rest of the client focused on API
+operations rather than networking details. Each public method describes *what*
+it wants to do, while the `request` method handles *how* the HTTP communication
+takes place.
+
+
 **Listing 8.2 — `cmd/apictl/client.go` (CRD, plugins, HTTP plumbing)**
 
 ```go
@@ -2483,13 +2549,25 @@ func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
 	return res, count, nil
 }
 
-// --- HTTP plumbing ---
+// Helper methods
 
-func (c *Client) get(path string) ([]byte, error)              { return c.request("GET", path, nil) }
-func (c *Client) post(path string, body []byte) ([]byte, error) { return c.request("POST", path, body) }
-func (c *Client) put(path string, body []byte) ([]byte, error)  { return c.request("PUT", path, body) }
-func (c *Client) delete(path string) ([]byte, error)            { return c.request("DELETE", path, nil) }
+func (c *Client) get(path string) ([]byte, error) {
+	return c.request("GET", path, nil)
+}
 
+func (c *Client) post(path string, body []byte) ([]byte, error) {
+	return c.request("POST", path, body)
+}
+
+func (c *Client) put(path string, body []byte) ([]byte, error) {
+	return c.request("PUT", path, body)
+}
+
+func (c *Client) delete(path string) ([]byte, error) {
+	return c.request("DELETE", path, nil)
+}
+
+// request performs an HTTP request with the given method, path, and body.
 func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 	url := c.baseURL + path
 	var req *http.Request
@@ -2527,12 +2605,58 @@ func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 }
 ```
 
-We add the streaming `Watch` method to this file in Chapter 14.
+In Chapter 14, this client will gain one more capability: the ability to watch
+resources as they change. Rather than issuing a single request and waiting for a
+complete response, the client will maintain a streaming connection to the server
+and process events as they arrive. That functionality will build on the same
+HTTP infrastructure established in this chapter.
+
 
 ### The CLI entrypoint
 
-The `main` function is a thin dispatcher: parse the subcommand and delegate to a
-command function (written in Chapter 9).
+The `main` function is intentionally small. Its responsibility is not to
+implement the behavior of every command, but simply to determine what the user
+wants to do and hand control to the appropriate function. Keeping the entrypoint
+lightweight makes it easier to add new commands without turning `main()` into a
+large collection of application logic.
+
+The program begins by checking that a command was supplied on the command line.
+If the user starts `apictl` without any arguments, the program displays a usage
+message and exits. This provides immediate guidance on the available commands
+and their expected syntax.
+
+Once the arguments have been validated, the first command-line argument is
+treated as the subcommand, while the remaining arguments are collected into a
+slice that is passed unchanged to the command implementation. This keeps
+argument parsing simple and allows each command to interpret its own options
+independently.
+
+Next, the program creates a `Client` connected to the API server. Every command
+uses this same client instance to communicate with the server, ensuring that all
+HTTP requests share the same implementation and error handling introduced
+earlier in the chapter.
+
+The `switch` statement acts as a dispatcher. Each supported command is mapped to
+a dedicated function responsible for carrying out the requested operation. For
+example, the `get` command retrieves resources, `create` sends new objects to
+the server, and `delete` removes existing objects. Commands such as
+`api-resources` and `api-versions` provide discovery features, while `watch`
+will become a streaming command in a later chapter.
+
+This design keeps each command isolated from the others. Adding a new command
+requires only two small changes: implement a new command function and add
+another case to the dispatcher. The entrypoint itself remains straightforward
+regardless of how many commands the CLI eventually supports.
+
+If the user enters an unknown command, the dispatcher reports the error and
+displays the usage information. This provides immediate feedback while also
+showing the correct command names and expected syntax.
+
+The `printUsage` function defines the built-in help text for the CLI. It
+summarizes the available commands, their arguments, and several example
+invocations. Having this information available directly in the executable makes
+it easy for users to discover the interface without consulting external
+documentation.
 
 **Listing 8.3 — `cmd/apictl/main.go`**
 
@@ -2608,21 +2732,33 @@ EXAMPLES:
 }
 ```
 
+
 ### Checkpoint
 
-With the server running:
+At this point, both halves of the project are in place. The server exposes a
+dynamic HTTP API, and the client library together with the CLI entrypoint
+provides a convenient way to interact with it from the command line.
+
+If the server is already running, you can build the CLI and verify that it can
+communicate with the API:
 
 ```bash
 go build -o apictl ./cmd/apictl
 ./apictl api-resources
-# NAME
-# orders
-# products
-# users
 ```
 
-Wait — that prints a formatted table. That formatting lives in the command functions,
-which we write next. For now, the client compiles and the dispatcher routes commands.
+The `api-resources` command should contact the server's discovery endpoint and
+retrieve the names of the registered resources. At this stage, the command
+functions are still minimal, so the output formatting shown in later chapters
+has not yet been implemented. The important thing is that the request reaches
+the server, the client successfully processes the response, and the dispatcher
+invokes the correct command handler.
+
+The next chapter focuses on those command functions. They will build on the
+client library introduced here, transforming the raw API responses into the
+user-friendly output expected from a command-line tool. By keeping networking,
+command dispatch, and presentation separate, each part of the CLI remains small,
+focused, and easy to extend.
 
 ---
 
