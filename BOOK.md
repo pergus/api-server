@@ -2766,10 +2766,74 @@ focused, and easy to extend.
 
 ### Goal
 
-Implement the command functions and the presentation helpers: tables, JSON pretty
-printing, file loading, and kind-to-plural inference.
+Implement the command functions and the presentation helpers: tables, JSON
+pretty printing, file loading, and kind-to-plural inference.
 
 ### Discovery and listing commands
+
+The first CLI commands focus on reading information from the server. They do not
+modify resources or send data to the API. Instead, they retrieve information and
+present it in a format that is easy for a user to read at the terminal.
+
+Each command follows the same overall pattern. It calls a method on the
+`Client`, checks for errors, and then formats the returned data for display.
+Because all HTTP communication is already handled by the client library, the
+command functions can concentrate entirely on user interaction and presentation.
+
+The `cmdAPIResources` command implements the `api-resources` subcommand. It asks
+the server for the list of currently registered resources and displays them as a
+simple table. Since the server generates this list from the live registry, the
+command always reflects the current state of the running application. Resources
+added or removed at runtime appear automatically without requiring any changes
+to the CLI.
+
+The `cmdAPIVersions` command follows exactly the same pattern. Instead of
+listing resources, it retrieves the available API groups and displays them in a
+table. Although API groups will become more important in later chapters, the
+command already demonstrates how discovery endpoints can be exposed through a
+consistent command-line interface.
+
+The `cmdPlugins` command retrieves information about the plugins currently
+loaded by the server. In addition to displaying the total number of plugins, it
+prints a table containing details about each one. Like the API group
+functionality, plugins are introduced later in the project, but the command
+structure already fits naturally into the rest of the CLI.
+
+The `cmdGet` command is slightly more flexible because it supports two related
+operations. If only a resource name is provided, such as `apictl get users`, the
+command lists every object belonging to that resource. If both a resource name
+and an identifier are supplied, such as `apictl get users alice`, the command
+retrieves just that single object.
+
+When listing multiple objects, the command asks the client for every item
+belonging to the specified resource. If no objects exist, it prints a simple
+message informing the user. Otherwise, it passes the collection to the
+`printTable` helper, which is responsible for formatting the data into neatly
+aligned columns.
+
+When retrieving a single object, the command instead formats the response as
+indented JSON. This makes it easy to inspect every field of the object without
+having to define a separate display format for each resource type. Because the
+objects are represented as generic maps, the same code works for users,
+products, orders, and any future resource.
+
+Throughout these commands, error handling follows a consistent pattern. If a
+client operation returns an error, the command prints a clear message to
+standard error and exits with a non-zero status code. This behavior makes the
+CLI predictable for both interactive users and shell scripts.
+
+A small but important detail is the use of Go's `tabwriter`. Rather than
+manually calculating column widths, the commands write tab-separated output and
+allow the writer to align each column automatically. This produces clean,
+readable tables regardless of the length of the resource names or values being
+displayed.
+
+Together, these commands demonstrate the separation of responsibilities
+established in the previous chapter. The client handles HTTP communication, the
+command functions interpret user intent, and helper functions format the
+results. Each layer has a single responsibility, making the CLI straightforward
+to extend as new server capabilities are added.
+
 
 **Listing 9.1 — `cmd/apictl/commands.go` (discovery, get, plugins)**
 
@@ -2861,6 +2925,7 @@ func cmdGet(c *Client, args []string) {
 	}
 
 	if id == "" {
+		// List all resources of this type
 		items, err := c.ListResources(resource)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -2873,22 +2938,92 @@ func cmdGet(c *Client, args []string) {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		printTable(w, items)
 		w.Flush()
+
 	} else {
+		// Get specific resource
 		item, err := c.GetResource(resource, id)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		data, _ := json.MarshalIndent(item, "", "  ")
-		fmt.Println(string(data))
+		data, err := json.MarshalIndent(item, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		
+		fmt.Println(string(data))		
 	}
 }
 ```
 
 ### Mutating commands
 
-`create` reads a JSON file, infers the resource from its `kind`, and POSTs it.
-`apply` handles both CRDs (YAML) and regular objects. `delete` special-cases CRDs.
+Unlike the discovery commands, the commands in this section change the state of
+the server. They create new resources, delete existing ones, and apply resource
+definitions from files. Although their behavior is different, they all follow
+the same overall structure: read input, validate it, determine the correct API
+operation, and delegate the actual HTTP communication to the client library.
+
+The `cmdCreate` command creates a new resource from a JSON document stored in a
+file. Rather than asking the user to specify both the resource type and the
+file, the command reads the object's `kind` field and derives the resource name
+automatically. For example, an object with `"kind": "User"` is mapped to the
+`users` resource. This makes the command easier to use and keeps the resource
+type embedded in the object itself.
+
+After loading and decoding the file, the command performs a small amount of
+validation by ensuring that a `kind` field exists. Once the resource name has
+been determined, the object is passed to the client, which sends it to the
+server using the generic create endpoint. If the operation succeeds, the server
+returns the identifier of the newly created object, which is displayed to the
+user.
+
+The `cmdDelete` command performs the opposite operation. It accepts a resource
+name and an object identifier, then asks the client to remove that object from
+the server. Most resources follow exactly the same deletion path, demonstrating
+once again how the generic API allows a single command to work with every
+registered resource.
+
+There is one special case: Custom Resource Definitions (CRDs). Because CRDs are
+managed through their own API endpoints, the command checks whether the
+requested resource is `crd` or `crds` before deciding which client method to
+call. This allows the command-line interface to present a consistent experience
+while still accommodating the server's specialized endpoints.
+
+The `cmdApply` command combines multiple operations into a single workflow.
+Inspired by tools such as `kubectl`, it examines the contents of a file and
+decides what action to perform instead of requiring the user to choose between
+separate commands.
+
+The command begins by reading the supplied file and attempting to parse it as
+YAML. If that fails, it falls back to JSON. Supporting both formats makes the
+tool more flexible and allows users to work with whichever representation is
+most convenient.
+
+Once the object has been parsed, the command again inspects the `kind` field. If
+the object represents a custom resource definition, it extracts the CRD
+specification and sends it to the server using the dedicated CRD API. Otherwise,
+it treats the object as a normal resource, determines its resource name from the
+`kind`, and creates it through the generic API.
+
+Although `cmdApply` contains more decision-making than the other commands, the
+underlying pattern remains the same. The command interprets the input file,
+chooses the correct client operation, and leaves the details of HTTP
+communication to the client library.
+
+These mutating commands illustrate one of the benefits of the generic server
+architecture. The CLI does not need separate implementations for users,
+products, orders, or future resource types. As long as an object identifies its
+kind, the command can determine the correct resource automatically and send it
+through the same generic API. New resource types therefore become available to
+the CLI without requiring new command implementations.
+
+By separating file parsing, resource discovery, and HTTP communication into
+distinct layers, the code remains easy to follow. The commands focus on
+interpreting user input, the client focuses on communicating with the server,
+and the server performs the actual resource operations.
+
 
 **Listing 9.2 — `cmd/apictl/commands.go` (create, delete, apply)**
 
@@ -2995,58 +3130,205 @@ func cmdApply(c *Client, args []string) {
 
 ### explain and helpers
 
-`explain` looks up a resource's CRD schema and a sample object. The helpers render
-tables and map a `Kind` to its plural.
+The final command in this chapter provides a way to inspect a resource rather
+than simply list or modify it. While the previous commands work with resource
+instances, the `explain` command focuses on the resource definition itself by
+displaying information about its kind, API group, version, and available schema.
 
-**Listing 9.3 — `cmd/apictl/commands.go` (explain + helpers)**
+The `cmdExplain` function begins by validating that a resource name was
+supplied. Before requesting schema information, it asks the server for the list
+of available resources. This check ensures that the command can provide a clear
+error message when the requested resource does not exist.
+
+After confirming that the resource is registered, the command looks through the
+available Custom Resource Definitions. If a matching CRD is found, it displays
+the resource's kind, API group, and version. If the CRD contains a schema, that
+schema is formatted as indented JSON so it can be inspected directly from the
+terminal.
+
+Not every resource has a CRD schema. Built-in resources such as users, products,
+and orders are implemented as Go types inside the server rather than being
+created dynamically through CRDs. For these resources, the command reports that
+no schema is available. The same command can therefore work for both built-in
+resources and dynamically created resources introduced later in the project.
+
+The rest of the file contains helper functions used throughout the CLI. These
+helpers keep common operations in one place so command functions can focus on
+their main purpose instead of repeating formatting, conversion, and lookup
+logic.
+
+The `extractID` helper retrieves an object's identifier in a flexible way. It
+first checks for a top-level `id` field, which is how the built-in resources
+represent their identifiers. If that field is not present, it checks for a
+Kubernetes-style `metadata.name` field, allowing the CLI to work with
+dynamically created resources that follow that convention. If neither location
+contains an identifier, it returns `"unknown"`.
+
+The `getFieldNames` helper collects the field names from a resource object and
+returns them as a slice of strings. This provides a small utility for code that
+needs to inspect or display the structure of generic objects without knowing
+their concrete type.
+
+The `pluralize` function converts an object's `Kind` into the plural resource
+name used by the API. For example, `User` becomes `users`, `Product` becomes
+`products`, and `Order` becomes `orders`. The implementation uses a small lookup
+table for known resources and falls back to appending `"s"` for unknown kinds.
+This simplified approach is enough for the resources used in this project while
+keeping the example easy to understand.
+
+The `convertMap` helper handles a common issue when working with YAML. YAML
+parsers often represent objects using `map[interface{}]interface{}`, while JSON
+and the rest of the application typically use `map[string]interface{}`. This
+helper converts YAML-style maps into JSON-compatible maps by converting keys to
+strings and recursively processing nested maps.
+
+The `printTable` helper generates the tabular output used by commands such as
+`get`. Because the CLI works with generic objects, it cannot know the fields of
+a resource ahead of time. Instead, the helper examines the returned objects,
+collects all available fields, places the `id` column first, sorts the remaining
+columns alphabetically, and prints the results using the provided `tabwriter`.
+
+This dynamic approach means the same table renderer can display users, products,
+orders, and future resource types without requiring custom formatting code for
+each one. If a field is missing from an individual object, the table simply
+leaves that cell empty.
+
+The `formatValue` helper converts individual values into display-friendly
+strings. Simple values such as strings, numbers, and booleans are printed
+directly. More complex values, such as maps and slices, are converted into JSON
+so nested data remains readable in the terminal. Nil values are displayed as
+empty cells.
+
+Together, these helpers support the generic design of the CLI. The commands do
+not need to know the concrete structure of every resource type. Instead, they
+operate on generic objects and rely on reusable helper functions for tasks such
+as identifier extraction, pluralization, YAML conversion, and table rendering.
+This allows new resource types to become available without requiring changes
+throughout the command implementation.
 
 ```go
-// cmdExplain shows a resource's schema and a sample object.
+// cmdExplain shows resource schema
 func cmdExplain(c *Client, args []string) {
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: apictl explain <resource>\n")
+		fmt.Fprintf(os.Stderr, "Usage: apitcl explain <resource>\n")
 		os.Exit(1)
 	}
+
 	resource := args[0]
 
-	all, err := c.GetAPIResources()
+	// Check if it's a registered resource (built-in or CRD)
+	allResources, err := c.GetAPIResources()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting resources: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Check if resource exists
 	found := false
-	for _, r := range all {
+	for _, r := range allResources {
 		if r == resource {
 			found = true
 			break
 		}
 	}
+
 	if !found {
 		fmt.Fprintf(os.Stderr, "Resource not found: %s\n", resource)
 		os.Exit(1)
 	}
 
-	if crds, err := c.ListCRDs(); err == nil {
+	// Try to find CRD/schema information
+	crds, err := c.ListCRDs()
+	if err == nil {
 		for _, crd := range crds {
-			if p, ok := crd["plural"].(string); ok && p == resource {
+			if crdPlural, ok := crd["plural"].(string); ok && crdPlural == resource {
+				// Get CRD metadata
 				kind, _ := crd["kind"].(string)
 				group, _ := crd["group"].(string)
 				version, _ := crd["version"].(string)
-				fmt.Printf("Kind: %s\nAPI: %s/%s\n\n", kind, group, version)
-				if schema, ok := crd["schema"].(map[string]interface{}); ok && len(schema) > 0 {
-					fmt.Println("Schema:")
-					data, _ := json.MarshalIndent(schema, "", "  ")
+
+				fmt.Printf("Kind: %s\n", kind)
+				fmt.Printf("API: %s/%s\n", group, version)
+				fmt.Println()
+
+				// Show schema
+				schema, hasSchema := crd["schema"]
+				if hasSchema && schema != nil {
+					if schemaMap, ok := schema.(map[string]interface{}); ok && len(schemaMap) > 0 {
+						fmt.Println("Schema:")
+						data, _ := json.MarshalIndent(schemaMap, "", "  ")
+						fmt.Printf("%s\n", string(data))
+					}
+				}
+
+				// Show sample object if available
+				items, err := c.ListResources(resource)
+				if err == nil && len(items) > 0 {
+					fmt.Println()
+					fmt.Println("Sample object:")
+					data, _ := json.MarshalIndent(items[0], "", "  ")
 					fmt.Printf("%s\n", string(data))
 				}
 				return
 			}
 		}
 	}
-	fmt.Printf("Resource: %s\n(No schema available)\n", resource)
+
+	// Fallback: show fields from sample objects
+	items, err := c.ListResources(resource)
+	if err == nil && len(items) > 0 {
+		fmt.Printf("Resource: %s\n", resource)
+		fmt.Printf("Available fields:\n")
+		for _, field := range getFieldNames(items[0]) {
+			fmt.Printf("  - %s\n", field)
+		}
+		fmt.Printf("\nSample object:\n")
+		data, _ := json.MarshalIndent(items[0], "", "  ")
+		fmt.Printf("%s\n", string(data))
+	} else {
+		fmt.Printf("Resource: %s\n", resource)
+		fmt.Printf("(No schema or sample objects available)\n")
+	}
 }
 
-// pluralize maps a Kind to its resource plural (simplified).
+// cmdWatch streams events for a resource
+func cmdWatch(c *Client, args []string) {
+	fmt.Fprintln(os.Stderr, "watch not implemented yet")
+	os.Exit(1)
+}
+
+
+// Helper functions
+
+// extractID extracts the ID from a resource object.
+// It first looks for the "id" field, then "metadata.name", and returns
+// "unknown" if neither is found.
+func extractID(obj map[string]interface{}) string {
+	if id, ok := obj["id"]; ok {
+		return fmt.Sprintf("%v", id)
+	}
+	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
+		if name, ok := meta["name"]; ok {
+			return fmt.Sprintf("%v", name)
+		}
+	}
+	return "unknown"
+}
+
+// getFieldNames returns the field names of a resource object as a slice of
+// strings.
+func getFieldNames(obj map[string]interface{}) []string {
+	fields := make([]string, 0, len(obj))
+	for k := range obj {
+		fields = append(fields, k)
+	}
+	return fields
+}
+
+// pluralize returns the plural form of a resource kind.
+// This is a simplified version and may not cover all cases.
 func pluralize(kind string) string {
+	// Simplified pluralization
 	switch kind {
 	case "User":
 		return "users"
@@ -3061,27 +3343,37 @@ func pluralize(kind string) string {
 	}
 }
 
-// convertMap turns a YAML map[interface{}]interface{} into map[string]interface{}.
+// convertMap converts a map with interface{} keys to a map with string keys.
+// This is useful for converting YAML parsed maps to JSON-compatible maps.
 func convertMap(m map[interface{}]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range m {
 		key := fmt.Sprintf("%v", k)
-		switch vv := v.(type) {
-		case map[interface{}]interface{}:
-			result[key] = convertMap(vv)
-		default:
+		if mv, ok := v.(map[interface{}]interface{}); ok {
+			result[key] = convertMap(mv)
+		} else if av, ok := v.([]interface{}); ok {
+			result[key] = av
+		} else {
 			result[key] = v
 		}
 	}
 	return result
 }
 
-// printTable prints objects as a table with "id" first, other columns sorted.
+// printTable prints a slice of maps as a table.
 func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
+	// The "id" field is always printed as the first column.
+	// Other fields are printed in alphabetical order.
+	// If a field is missing in an item, it will be printed as empty.
+	// The table is printed to the provided tabwriter.Writer.
+
 	if len(items) == 0 {
 		return
 	}
+
+	// Collect all keys except "id".
 	keySet := make(map[string]struct{})
+
 	for _, item := range items {
 		for key := range item {
 			if key != "id" {
@@ -3089,13 +3381,19 @@ func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
 			}
 		}
 	}
+
+	columns := make([]string, 0, len(keySet)+1)
+	columns = append(columns, "id")
+
 	keys := make([]string, 0, len(keySet))
 	for key := range keySet {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	columns := append([]string{"id"}, keys...)
 
+	columns = append(columns, keys...)
+
+	// Header.
 	for i, col := range columns {
 		if i > 0 {
 			fmt.Fprint(w, "\t")
@@ -3104,35 +3402,44 @@ func printTable(w *tabwriter.Writer, items []map[string]interface{}) {
 	}
 	fmt.Fprintln(w)
 
+	// Rows.
 	for _, item := range items {
 		for i, col := range columns {
 			if i > 0 {
 				fmt.Fprint(w, "\t")
 			}
+
 			fmt.Fprint(w, formatValue(item[col]))
 		}
 		fmt.Fprintln(w)
 	}
+
 	w.Flush()
 }
 
-// formatValue renders a cell; maps and slices become JSON.
+// formatValue formats a value for display in the table.
 func formatValue(value interface{}) string {
+	// If the value is a map or slice, it is marshaled to JSON.
+	// If the value is nil, it returns an empty string.
+	// Otherwise, it returns the string representation of the value.
+
 	if value == nil {
 		return ""
 	}
+
 	switch value.(type) {
 	case map[string]interface{}, []interface{}:
 		if data, err := json.Marshal(value); err == nil {
 			return string(data)
 		}
 	}
+
 	return fmt.Sprint(value)
 }
 ```
 
-`cmdWatch` is added in Chapter 14 (it needs the streaming client). For now, add a
-temporary stub so the file compiles:
+`cmdWatch` is added in Chapter 14 (it needs the streaming client). For now, add
+a temporary stub so the file compiles:
 
 ```go
 func cmdWatch(c *Client, args []string) {
@@ -3159,8 +3466,31 @@ EOF
 # bob   bob@x.io    true       Bob
 ```
 
-You now have a discovery-driven client that already works with everything the server
-can do — including resource types we have not even invented yet.
+You now have a discovery-driven client that already works with everything the
+server can do — including resource types we have not even invented yet.
+
+This is an important milestone because the CLI is no longer tied to a fixed set
+of resources. It does not contain special knowledge about users, products,
+orders, or any other built-in type. Instead, it discovers what the server
+currently provides and interacts with resources through the same generic API
+operations.
+
+When a new resource is registered at runtime, the client can immediately
+discover it through the API discovery endpoint, list its objects, retrieve
+individual instances, create new objects, update existing ones, and delete them.
+No new CLI command, client method, or resource-specific code is required.
+
+This works because the client and server share the same contract: resources are
+identified by names, objects are represented using generic JSON data, and
+operations are performed through consistent endpoints. The client does not need
+to understand the internal implementation of a resource; it only needs to know
+how to communicate with the API.
+
+This design is what makes the system extensible. Future chapters will add
+capabilities such as custom resource definitions, plugins, schemas, and event
+streaming, but the foundation is already complete. The client has been built
+around discovery rather than assumptions, allowing it to continue working as the
+server grows and new resource types appear.
 
 ---
 

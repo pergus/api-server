@@ -393,7 +393,8 @@ func cmdWatch(c *Client, args []string) {
 // Helper functions
 
 // extractID extracts the ID from a resource object.
-// It first looks for the "id" field, then "metadata.name", and returns "unknown" if neither is found.
+// It first looks for the "id" field, then "metadata.name", and returns
+// "unknown" if neither is found.
 func extractID(obj map[string]interface{}) string {
 	if id, ok := obj["id"]; ok {
 		return fmt.Sprintf("%v", id)
@@ -406,6 +407,8 @@ func extractID(obj map[string]interface{}) string {
 	return "unknown"
 }
 
+// getFieldNames returns the field names of a resource object as a slice of
+// strings.
 func getFieldNames(obj map[string]interface{}) []string {
 	fields := make([]string, 0, len(obj))
 	for k := range obj {
