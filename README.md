@@ -492,7 +492,7 @@ When you define a CRD:
 api-server/
 ├── go.mod                          # Go module file
 ├── cmd/
-│   ├── server/main.go              # Server entry point
+│   ├── api-server/main.go          # Server entry point
 │   └── apitcl/                     # CLI client
 │       ├── main.go
 │       ├── client.go
