@@ -6,33 +6,36 @@
 
 ## Preface
 
-Most REST servers are frozen at compile time. You declare your routes, wire them to
-handlers, build a binary, and ship it. Adding a new resource means editing code,
-recompiling, and restarting. That is fine for many systems — but it is not how
-platforms like Kubernetes work. Kubernetes lets you invent brand-new resource types
-at *runtime*, and the moment you register one, the whole API surface knows about it:
-no restart, no recompile, no router rebuild.
+Most REST servers are frozen at compile time. You declare your routes, wire them
+to handlers, build a binary, and ship it. Adding a new resource means editing
+code, recompiling, and restarting. That is fine for many systems — but it is not
+how platforms like Kubernetes work. Kubernetes lets you invent brand-new
+resource types at *runtime*, and the moment you register one, the whole API
+surface knows about it: no restart, no recompile, no router rebuild.
 
-This book teaches you how to build such a system in Go. You will build two programs:
+This book teaches you how to build such a system in Go. You will build two
+programs:
 
 - **`api-server`** — a dynamic REST server where resources can appear and disappear
   while it runs.
 - **`apictl`** — a command-line client that *discovers* what the server can do,
   instead of hardcoding it.
 
-The style of this book is deliberately hands-on and incremental. Every chapter adds 
-one idea, shows you the complete code for it, and ends with a **Checkpoint**: 
-a command you can run to prove the program works so far. If you type in the code as 
-you read, you will always have a running program at the end of every chapter.
+The style of this book is deliberately hands-on and incremental. Every chapter
+adds one idea, shows you the complete code for it, and ends with a
+**Checkpoint**: a command you can run to prove the program works so far. If you
+type in the code as you read, you will always have a running program at the end
+of every chapter.
 
-You do **not** need access to any repository to follow along. Every file you need is
-printed in full inside these pages.
+You do **not** need access to any repository to follow along. Every file you
+need is printed in full inside these pages.
 
 ### Who should read this
 
-You should be comfortable with Go basics: structs, interfaces, goroutines, channels,
-and the standard `net/http` package. You do not need prior experience with
-Kubernetes, plugins, or event-driven systems — we build all of that from scratch.
+You should be comfortable with Go basics: structs, interfaces, goroutines,
+channels, and the standard `net/http` package. You do not need prior experience
+with Kubernetes, plugins, or event-driven systems — we build all of that from
+scratch.
 
 ### What you will learn
 
@@ -102,15 +105,15 @@ mux.HandleFunc("DELETE /users/{id}", deleteUser)
 // ... repeat all five lines for products, orders, invoices, ...
 ```
 
-Every resource needs five near-identical routes and five handlers that all do the
-same thing except for the concrete type they unmarshal into. Worse, the set of
-routes is fixed when `main()` runs. To add `invoices`, you must edit this file,
-recompile, and restart.
+Every resource needs five near-identical routes and five handlers that all do
+the same thing except for the concrete type they unmarshal into. Worse, the set
+of routes is fixed when `main()` runs. To add `invoices`, you must edit this
+file, recompile, and restart.
 
 ### The idea we will build
 
-What if the router only ever registered a handful of *generic* routes, and figured
-out the target resource on each request?
+What if the router only ever registered a handful of *generic* routes, and
+figured out the target resource on each request?
 
 ```go
 // The dynamic approach — what we WILL build
@@ -161,8 +164,8 @@ natural extension. Let us set up the project.
 
 ### Checkpoint
 
-You understand the goal: a server whose router never changes while its capabilities
-grow at runtime. No code yet — that starts in Chapter 2.
+You understand the goal: a server whose router never changes while its
+capabilities grow at runtime. No code yet — that starts in Chapter 2.
 
 ---
 
@@ -174,8 +177,8 @@ Create the module and directory layout we will fill in throughout the book.
 
 ### The layout
 
-We will build this structure. Do not create the files' contents yet; just make the
-folders and the module. Each file is filled in by a later chapter.
+We will build this structure. Do not create the files' contents yet; just make
+the folders and the module. Each file is filled in by a later chapter.
 
 ```
 api-server/
@@ -221,8 +224,9 @@ api-server/
 
 ### Create the module
 
-Pick any module path you like; this book uses `github.com/pergus/api-server`. If you
-choose a different path, substitute it everywhere you see that import prefix.
+Pick any module path you like; this book uses `github.com/pergus/api-server`. If
+you choose a different path, substitute it everywhere you see that import
+prefix.
 
 ```bash
 mkdir api-server && cd api-server
@@ -267,16 +271,16 @@ mkdir -p cmd/api-server cmd/apictl \
 go build ./...
 ```
 
-This succeeds (it compiles zero packages so far) and confirms your module is set up.
-You now have a skeleton ready to fill in.
+This succeeds (it compiles zero packages so far) and confirms your module is set
+up. You now have a skeleton ready to fill in.
 
 ---
 
 # Part II — The Core Framework
 
-All core framework code lives in package `api` under `pkg/api/`. We build it bottom
-up: first the contracts (`Resource`, `Storage`), then the runtime registries
-(`Registry`, `Scheme`), then the router and server on top.
+All core framework code lives in package `api` under `pkg/api/`. We build it
+bottom up: first the contracts (`Resource`, `Storage`), then the runtime
+registries (`Registry`, `Scheme`), then the router and server on top.
 
 **Figure 2.1 — How the core pieces fit together**
 
@@ -298,15 +302,16 @@ flowchart TD
 
 ### Goal
 
-Define the two most fundamental contracts: what a *resource* is, and how it *persists*
-its objects. Then provide a thread-safe in-memory storage implementation.
+Define the two most fundamental contracts: what a *resource* is, and how it
+*persists* its objects. Then provide a thread-safe in-memory storage
+implementation.
 
 ### The Resource interface
 
-A `Resource` is the framework's abstraction for a type of object. It defines the 
-resource name (used in the URL), provides a factory for creating empty instances, 
-and specifies the storage backend. The framework doesn't know about concrete 
-types such as `User` or `Order`; it only interacts with `Resource`.
+A `Resource` is the framework's abstraction for a type of object. It defines the
+resource name (used in the URL), provides a factory for creating empty
+instances, and specifies the storage backend. The framework doesn't know about
+concrete types such as `User` or `Order`; it only interacts with `Resource`.
 
 
 **Listing 3.1 — `pkg/api/resource.go`**
@@ -557,10 +562,10 @@ PASS means your storage foundation works.
 
 ### Goal
 
-Build the two runtime tables that make the router generic: the **Registry** (which
-resources exist) and the **Scheme** (how to build an empty object for a resource by
-name). Both are consulted on every request, so both use `sync.RWMutex` for cheap
-concurrent reads.
+Build the two runtime tables that make the router generic: the **Registry**
+(which resources exist) and the **Scheme** (how to build an empty object for a
+resource by name). Both are consulted on every request, so both use
+`sync.RWMutex` for cheap concurrent reads.
 
 ### The Registry
 
@@ -682,9 +687,20 @@ func (r *SimpleRegistry) Count() int {
 
 ### The Scheme
 
-Generic handlers face a problem: to decode incoming JSON they need a concrete destination object, but they must not import `User` or `Order`. The `Scheme` solves this by mapping a name to a factory function that returns a fresh, empty object. This creates a layer of indirection between the generic processing logic and the concrete types being handled, allowing the system to work with new resource types without requiring changes to the handler itself.
+Generic handlers face a problem: to decode incoming JSON they need a concrete
+destination object, but they must not import `User` or `Order`. The `Scheme`
+solves this by mapping a name to a factory function that returns a fresh, empty
+object. This creates a layer of indirection between the generic processing logic
+and the concrete types being handled, allowing the system to work with new
+resource types without requiring changes to the handler itself.
 
-At runtime, the handler can ask the `Scheme` for an object based only on its registered name, populate it with decoded data, and continue processing without needing to know anything about the object's internal structure. This keeps type-specific knowledge isolated at the registration boundary while preserving the flexibility of a generic execution pipeline. New resources can be introduced simply by adding new registrations, rather than modifying existing infrastructure code.
+At runtime, the handler can ask the `Scheme` for an object based only on its
+registered name, populate it with decoded data, and continue processing without
+needing to know anything about the object's internal structure. This keeps
+type-specific knowledge isolated at the registration boundary while preserving
+the flexibility of a generic execution pipeline. New resources can be introduced
+simply by adding new registrations, rather than modifying existing
+infrastructure code.
 
 **Listing 4.2 — `pkg/api/scheme.go`**
 
@@ -778,11 +794,22 @@ flowchart TB
     REQ --> Scheme
 ```
 
-The registry answers one simple question: "Is this resource available, and where can I find its data?" The scheme answers another: "How do I create an empty object of this type so I can fill it with incoming data?" Together, they give a single handler everything it needs to work with any resource in the system.
+The registry answers one simple question: "Is this resource available, and where
+can I find its data?" The scheme answers another: "How do I create an empty
+object of this type so I can fill it with incoming data?" Together, they give a
+single handler everything it needs to work with any resource in the system.
 
-For example, when a request arrives for `users`, the handler does not need to know what a `User` object looks like or where users are stored. It asks the registry for the `users` resource, uses the scheme to create a new empty user object, and then decodes the incoming data into that object. The same process works for `orders`, `products`, or any other registered resource.
+For example, when a request arrives for `users`, the handler does not need to
+know what a `User` object looks like or where users are stored. It asks the
+registry for the `users` resource, uses the scheme to create a new empty user
+object, and then decodes the incoming data into that object. The same process
+works for `orders`, `products`, or any other registered resource.
 
-This separation keeps the handler simple and reusable. The handler focuses only on processing requests, while the registry and scheme provide the resource-specific details behind the scenes. Adding a new resource does not require changing the handler; it only requires registering the resource and teaching the scheme how to create it.
+This separation keeps the handler simple and reusable. The handler focuses only
+on processing requests, while the registry and scheme provide the
+resource-specific details behind the scenes. Adding a new resource does not
+require changing the handler; it only requires registering the resource and
+teaching the scheme how to create it.
 
 
 ### Checkpoint
@@ -794,9 +821,15 @@ ok  	github.com/pergus/api-server/pkg/api	0.244s [no tests to run]
 go build ./...
 ```
 
-Write a quick test if you like: register a resource, look it up, register a factory, and call `New`. Both tables should behave as expected. This small check confirms that the registry can store and retrieve resources correctly, while the scheme can create new objects when requested.
+Write a quick test if you like: register a resource, look it up, register a
+factory, and call `New`. Both tables should behave as expected. This small check
+confirms that the registry can store and retrieve resources correctly, while the
+scheme can create new objects when requested.
 
-Once these pieces work together, the dynamic core is in place. Resources can be added, discovered, and created at runtime without changing the main handler logic. From here, the system has the foundation it needs to support new resource types through simple registration rather than custom code.
+Once these pieces work together, the dynamic core is in place. Resources can be
+added, discovered, and created at runtime without changing the main handler
+logic. From here, the system has the foundation it needs to support new resource
+types through simple registration rather than custom code.
 
 ---
 
@@ -804,9 +837,9 @@ Once these pieces work together, the dynamic core is in place. Resources can be 
 
 ### Goal
 
-Write the single most important file in the project: the router that turns every HTTP
-request into a registry lookup plus one generic handler. We also define the JSON
-response envelopes it returns.
+Write the single most important file in the project: the router that turns every
+HTTP request into a registry lookup plus one generic handler. We also define the
+JSON response envelopes it returns.
 
 ### Response envelopes
 
@@ -4038,8 +4071,8 @@ func (r *DynamicResource) CRD() *CRDDefinition {
 ```
 
 Because `DynamicObject` marshals to `{"id": ..., ...spec}`, the storage layer's
-`extractID` still finds the `id`, and the CLI table still shows an `ID` column. The
-dynamic type slots seamlessly into all the generic machinery.
+`extractID` still finds the `id`, and the CLI table still shows an `ID` column.
+The dynamic type slots seamlessly into all the generic machinery.
 
 ### CRD routes
 
@@ -4300,12 +4333,14 @@ With the server running:
 ```bash
 ./apictl api-resources           # orders, products, users
 ./apictl apply -f examples/invoice-crd.yaml
+
 # CRD applied: invoices.example.io
 ./apictl api-resources           # invoices now appears!
 ./apictl create -f examples/invoice-1.json
 ./apictl get invoices
 # ID       AMOUNT  CUSTOMER    DATE        STATUS
 # inv-001  5000    Acme Corp   2025-07-15  sent
+
 ./apictl delete crd invoices.example.io
 ./apictl api-resources           # invoices is gone again
 ```
@@ -5358,20 +5393,8 @@ compiled plugins.
 # Part V — Event-Driven Architecture
 
 The final major capability turns the server from a passive store into a reactive
-platform. Every change becomes an event; clients can stream events, and controllers
-can act on them.
-
-**Figure 13.1 — The event pipeline**
-
-```mermaid
-flowchart TD
-    H[HTTP write handler] --> ST[Storage.Create/Update/Delete]
-    ST --> EB[EventBus.Publish]
-    EB --> FO[fanOut goroutine]
-    FO --> Wc[Watch client subscription]
-    FO --> Ct[Controller subscription]
-    Ct --> ST2[Storage.Update] --> EB
-```
+platform. Every change becomes an event; clients can stream events, and
+controllers can act on them.
 
 ## Chapter 13: Events and the Event Bus
 
@@ -5381,6 +5404,7 @@ The API server has now reached the point where resources can be created
 dynamically, discovered at runtime, and extended through plugins. The next
 capability needed is a way for the rest of the system to react when something
 changes.
+
 
 Until this chapter, requests have been handled as isolated operations. A client
 sends a request, the router calls storage, and the response is returned. That
@@ -5453,6 +5477,19 @@ The model deliberately uses `any` for the object field. This is consistent with
 the rest of the framework: the event system should not need to know whether it
 is carrying a `User`, `Product`, `Order`, or a dynamically created CRD object.
 Any resource type can flow through the same event pipeline.
+
+**Figure 13.1 — The event pipeline**
+
+```mermaid
+flowchart TD
+    H[HTTP write handler] --> ST[Storage.Create/Update/Delete]
+    ST --> EB[EventBus.Publish]
+    EB --> FO[fanOut goroutine]
+    FO --> Wc[Watch client subscription]
+    FO --> Ct[Controller subscription]
+    Ct --> ST2[Storage.Update] --> EB
+```
+
 
 For example, creating a user might generate:
 
@@ -5886,9 +5923,201 @@ func (b *SimpleEventBus) Close() error {
 }
 ```
 
-ADD EVENTBUS CODE TO THE SEVER HERE!!!
+### Connecting the event bus to the server and router
 
-**Figure 13.2 — Why publishers never block**
+The event bus is only useful if the rest of the framework can access it. The
+next step is wiring it into the central objects that coordinate API operations.
+
+The Server becomes the owner of the event bus. Just as the server owns the
+registry, scheme, and CRD registry, it also owns the event infrastructure that
+connects storage changes to watchers and controllers. Creating the event bus at
+the server level ensures that every component participating in the API lifecycle
+shares the same event stream.
+
+The updated server structure adds an eventBus field alongside the existing
+framework components:
+
+**Listing 13.3 - `pkg/api/server.go`**
+
+```go
+// Server is the HTTP API server.
+type Server struct {
+	registry    Registry
+	scheme      Scheme
+	router      *Router
+	httpServer  *http.Server
+	port        int
+	crdRegistry CRDRegistry
+	eventBus    EventBus
+}
+```
+
+The constructor creates the event bus during server initialization and passes it
+to the router:
+
+**Listing 13.4 - `pkg/api/server.go`**
+
+```go
+// NewServer creates a new server.
+func NewServer(cfg Config) *Server {
+	registry := NewRegistry()
+	scheme := NewScheme()
+	crdRegistry := NewCRDRegistry()
+	eventBus := NewEventBus()
+	router := NewRouter(registry, scheme, crdRegistry, eventBus)
+
+	return &Server{
+		registry:    registry,
+		scheme:      scheme,
+		router:      router,
+		crdRegistry: crdRegistry,
+		eventBus:    eventBus,
+		port:        cfg.Port,
+	}
+}
+```
+
+This creates a single event pipeline for the entire application. Storage
+operations, watch endpoints, and controllers all communicate through this shared
+instance.
+
+The router receives the same event bus because it is responsible for exposing
+event-driven features such as the Watch API. When a client connects using
+?watch=true, the router subscribes to this server-wide event stream rather than
+creating a separate event system for each request.
+
+
+The server also exposes the event bus through an accessor:
+
+**Listing 13.5 - `pkg/api/server.go`**
+
+```go
+// EventBus returns the event bus.
+// Called by controllers and watch endpoints to subscribe to events.
+func (s *Server) EventBus() EventBus {
+	return s.eventBus
+}
+```
+
+Controllers use this method when they start so that they can subscribe to
+resource changes. This keeps controllers independent from the internal server
+structure: they only need an EventBus interface, not direct access to the
+server.
+
+The final piece is connecting resources to the event system during registration.
+
+Previously, registering a resource only made it available through the registry.
+Now registration also connects the resource's storage layer to the event bus:
+
+**Listing 13.6 - `pkg/api/server.go`**
+
+```go
+// RegisterResource registers a resource at runtime.
+// This makes the resource immediately available without restarting the server.
+// Also attaches the event bus to the resource's storage so events are published.
+func (s *Server) RegisterResource(resource Resource) error {
+	// Attach event bus to storage if storage is MemoryStorage
+	if ms, ok := resource.Storage().(*MemoryStorage); ok {
+		ms.SetEventBus(s.eventBus, resource.Name())
+	}
+
+	err := s.registry.Register(resource)
+	if err == nil {
+		log.Printf("Registered resource: %s", resource.Name())
+	}
+	return err
+}
+```
+
+This is the point where the earlier event publishing code inside MemoryStorage
+becomes active. Storage does not need to know about the server or router.
+Instead, the server injects the event bus when the resource is registered.
+
+The lifecycle now looks like this:
+
+The server creates one shared event bus.
+1.  A resource is registered.
+2. The server attaches the event bus to that resource's storage.
+3. A client creates, updates, or deletes an object.
+4. Storage publishes an event.
+5. Watch clients and controllers receive that event.
+
+The storage layer remains reusable because it only depends on the event bus
+interface. It does not know whether the subscriber is an HTTP connection, a
+controller, another service, or something added in the future.
+
+
+
+The router is also updated to hold a reference to the event bus:
+
+**Listing 13.6 — `pkg/api/router.go`**
+
+```go
+// Router is the HTTP request dispatcher.
+//
+// THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
+//
+// Unlike typical REST servers that create routes for each resource at startup:
+//
+//	GET /users, POST /users, GET /users/{id}, etc.
+//
+// This router creates only GENERIC routes that determine the resource at runtime:
+//
+//	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
+//
+// Every request:
+// 1. Extracts the resource name from the URL
+// 2. Looks it up in the registry (which may have been updated while running)
+// 3. Dispatches to ONE generic handler
+//
+// The handlers never know about specific resources. They work through:
+// - The Resource interface
+// - The Storage interface
+// - The Scheme (for object creation)
+//
+// This means new resources are immediately available after registration—
+// no router rebuild, no server restart, no HTTP listener restart.
+type Router struct {
+	registry    Registry
+	scheme      Scheme
+	crdRegistry CRDRegistry
+	eventBus    EventBus
+	mux         *http.ServeMux
+}
+```
+
+
+The constructor now accepts the event bus:
+
+**Listing 13.7 — `pkg/api/router.go`**
+
+```go
+// NewRouter creates a new router.
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+	return &Router{
+		registry:    registry,
+		scheme:      scheme,
+		crdRegistry: crdRegistry,
+		eventBus:    eventBus,
+		mux:         http.NewServeMux(),
+	}
+}
+```
+
+This preserves the router's generic design. The router still does not know about
+specific resource types. It does not contain special handling for users, orders,
+or other objects. Its new responsibility is simply to provide access to the
+event bus for generic event-streaming behavior.
+
+The addition of the event bus demonstrates an important property of the
+framework: new capabilities can be introduced by adding infrastructure behind
+existing interfaces rather than rewriting the request path. The router still
+discovers resources dynamically, storage still handles persistence, and now
+events flow through the system without any resource-specific code in the core
+server.
+
+
+### Why publishers never block
 
 The key design property of the event bus is that resource mutations are not tied
 to the speed of event consumers. A client creating an object should receive a
@@ -5967,6 +6196,8 @@ changing storage, HTTP handlers, or existing resources, because the event bus
 acts as a stable boundary between the core API and the components that react to
 changes.
 
+
+**Figure 13.2 — Why publishers never block**
 
 ```mermaid
 sequenceDiagram
@@ -6725,7 +6956,6 @@ With this in place, the API server has moved beyond request/response behavior
 and now supports real-time observation of resource state changes. The same
 mechanism can later power controllers, automation agents, dashboards, and other
 clients that need to react immediately when the API state changes.
-
 
 ---
 
