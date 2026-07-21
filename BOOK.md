@@ -7322,6 +7322,7 @@ controller-driven architecture:
 
 The API server can now do more than store and retrieve objects. It can observe
 changes, execute automated reactions, and continuously maintain resource state. 
+
 **Listing 15.4 — `cmd/api-server/main.go` (controller additions)**
 
 ```go
@@ -7359,10 +7360,11 @@ request-handling path.
 
 ### The reconciliation loop
 
-The reconciliation loop demonstrates the complete flow of an event-driven resource
-lifecycle. Instead of placing business logic inside the HTTP handler, the API server
-only records the requested state change and publishes an event. Controllers then
-observe those events and decide whether additional actions are required.
+The reconciliation loop demonstrates the complete flow of an event-driven
+resource lifecycle. Instead of placing business logic inside the HTTP handler,
+the API server only records the requested state change and publishes an event.
+Controllers then observe those events and decide whether additional actions are
+required.
 
 **Figure 15.1 — The reconciliation loop**
 
@@ -7382,25 +7384,26 @@ sequenceDiagram
     EB->>W: MODIFIED (status=processing)
 ```
 
-The sequence begins when a client creates an order using `apictl`. The initial object
-contains the state requested by the user — in this example, an order with a `draft`
-status. The API server accepts the request, stores the object, and publishes an
-`ADDED` event through the event bus.
+The sequence begins when a client creates an order using `apictl`. The initial
+object contains the state requested by the user — in this example, an order with
+a `draft` status. The API server accepts the request, stores the object, and
+publishes an `ADDED` event through the event bus.
 
-At this point, the event bus fans the event out to every interested subscriber. A
-watch client receives the event immediately and displays the object exactly as it was
-created. At the same time, the `OrderController` receives the same event and begins
-its reconciliation process.
+At this point, the event bus fans the event out to every interested subscriber.
+A watch client receives the event immediately and displays the object exactly as
+it was created. At the same time, the `OrderController` receives the same event
+and begins its reconciliation process.
 
 The controller does not modify the original request. Instead, it evaluates the
 current state and applies the desired transition. For a newly created order, the
-controller decides that the order should move from `draft` to `processing`. It writes
-that updated state back through the normal resource storage layer.
+controller decides that the order should move from `draft` to `processing`. It
+writes that updated state back through the normal resource storage layer.
 
-Because the controller uses the same storage path as any other update, the change is
-not invisible internal state. The storage layer publishes another event, this time a
-`MODIFIED` event. The event bus again distributes that event to all subscribers,
-including watch clients and any other controllers interested in orders.
+Because the controller uses the same storage path as any other update, the
+change is not invisible internal state. The storage layer publishes another
+event, this time a `MODIFIED` event. The event bus again distributes that event
+to all subscribers, including watch clients and any other controllers interested
+in orders.
 
 This creates a feedback loop:
 
@@ -7412,14 +7415,15 @@ This creates a feedback loop:
 5. Those changes produce new events that continue the loop.
 
 The important property of this design is separation of responsibilities. The API
-server remains generic: it knows how to store resources and publish changes, but it
-does not need to understand order processing rules. The controller owns the business
-logic and can evolve independently. New behaviors can be added by introducing new
-controllers rather than modifying the API layer.
+server remains generic: it knows how to store resources and publish changes, but
+it does not need to understand order processing rules. The controller owns the
+business logic and can evolve independently. New behaviors can be added by
+introducing new controllers rather than modifying the API layer.
 
-This pattern is the foundation of many large-scale orchestration systems. The system
-does not execute a fixed workflow after every request. Instead, it continuously works
-toward the desired state by reacting to changes as they occur.
+This pattern is the foundation of many large-scale orchestration systems. The
+system does not execute a fixed workflow after every request. Instead, it
+continuously works toward the desired state by reacting to changes as they
+occur.
 
 ### Checkpoint
 
@@ -7458,11 +7462,11 @@ EVENT: MODIFIED
 }
 ```
 
-The first event represents the user's requested state. The second event represents the
-controller's reconciliation action. No additional API call was required from the
-client, and no polling loop was involved. The controller observed the change,
-performed its logic, and the resulting state transition propagated automatically
-through the event system.
+The first event represents the user's requested state. The second event
+represents the controller's reconciliation action. No additional API call was
+required from the client, and no polling loop was involved. The controller
+observed the change, performed its logic, and the resulting state transition
+propagated automatically through the event system.
 
 At this point the framework has all of the major building blocks of a dynamic
 platform: discovery, runtime resources, plugins, events, watches, and
@@ -7478,20 +7482,83 @@ system has moved from a simple CRUD API into a reactive control plane.
 
 ### Goal
 
-Lock in behavior with automated tests and a repeatable manual smoke test.
+By this point, the framework has grown from a simple REST server into a small
+platform with discovery, dynamic resources, plugins, events, watches, and
+controllers. Each individual feature works through a clear abstraction boundary,
+but that also means there are now many moving parts that must continue to
+cooperate correctly.
+
+The goal of this chapter is to lock in that behavior with automated tests and a
+repeatable smoke test. The tests do more than verify individual functions: they
+protect the contracts between the different layers of the system. A storage
+change should not silently break event delivery. A router change should not
+prevent discovery. A controller change should not introduce an endless
+reconciliation loop.
+
+The most valuable tests are placed at the natural seams between components.
+Instead of testing implementation details, the test suite should verify the
+behavior that other parts of the framework depend on.
 
 ### What to test
 
-Cover each layer at its natural seam:
+Each layer has a small set of responsibilities that should be covered
+independently and, where appropriate, together.
 
-- **Storage**: create/get/update/delete, missing-ID errors, duplicate errors.
-- **Registry / Scheme**: register, duplicate rejection, lookup, unregister.
-- **Router**: use `net/http/httptest` to exercise CRUD and discovery end to end.
-- **EventBus**: publish/subscribe, multiple subscribers, close semantics.
-- **CRD lifecycle**: create CRD, use the resource, delete CRD, confirm 404.
-- **Controllers**: publish an `ADDED` event and assert the follow-up `MODIFIED`.
+**Storage**
 
-A representative router test:
+The storage layer is the foundation for every resource. Tests should verify the
+full resource lifecycle:
+
+* Creating an object stores it and makes it retrievable.
+* Getting an existing object returns the expected data.
+* Updating an object replaces the stored state correctly.
+* Deleting an object removes it permanently.
+* Objects without IDs are rejected.
+* Attempts to create duplicate IDs return errors rather than silently replacing
+  existing data.
+
+These tests ensure that all higher-level features, including events and
+controllers, are built on predictable behavior.
+
+**Registry and Scheme**
+
+The registry and scheme provide the dynamic type system of the framework. They
+should be tested independently because nearly every runtime extension depends on
+them.
+
+Important cases include:
+
+* Registering a resource makes it discoverable.
+* Registering the same resource twice fails.
+* Lookup returns the correct resource implementation.
+* Unregister removes the resource.
+* Type factories return the expected object type.
+
+These tests protect the mechanisms that allow built-in resources, CRDs, and
+plugins to coexist.
+
+**Router**
+
+The HTTP layer should be tested using Go's `net/http/httptest` package. This
+avoids starting a real server process while still exercising the complete
+request path.
+
+Router tests should cover:
+
+* Creating resources through HTTP.
+* Retrieving objects.
+* Listing resources.
+* Updating resources.
+* Deleting resources.
+* API discovery endpoints.
+* Error responses for invalid requests.
+
+Testing the router at this level verifies that HTTP requests are correctly
+translated into registry lookups, storage operations, and API responses.
+
+A representative CRUD test looks like this:
+
+**Listing 16.1**
 
 ```go
 func TestRouterCRUD(t *testing.T) {
@@ -7513,8 +7580,86 @@ func TestRouterCRUD(t *testing.T) {
 }
 ```
 
-(Expose the router from the server, or test the router directly by constructing it
-with `api.NewRouter(...)` and calling `Setup()`.)
+This test does not need to open a network port. Instead, `httptest` provides an
+in-memory request and response environment that behaves like a real HTTP
+exchange. The server receives the request, processes it through the normal
+router path, and returns a response that the test can inspect.
+
+One small adjustment may be required depending on the server structure. If the
+router is currently private, expose a testing accessor from the server or
+construct the router directly:
+
+**Listing 16.2**
+
+```go
+router := api.NewRouter(server.Registry(), server.Scheme(), server.EventBus(), server.CRDRegistry())
+router.Setup()
+```
+
+The important part is that tests should use the same routing and middleware path
+as production. Otherwise, a test can pass while the actual server behavior is
+broken.
+
+**EventBus**
+
+The event system should be tested around its concurrency guarantees. The most
+important properties are:
+
+* Publishing an event reaches subscribers.
+* Multiple subscribers receive the same event.
+* A closed subscription stops receiving events.
+* Closing the bus shuts down subscriptions cleanly.
+* A slow subscriber does not prevent other subscribers from receiving events.
+
+These tests validate the decoupling that makes watches and controllers possible.
+
+**CRD lifecycle**
+
+Custom resources introduce behavior that does not exist for built-in resources,
+so they require their own integration tests.
+
+A complete CRD test should:
+
+1. Register a CRD.
+2. Confirm the resource appears in discovery.
+3. Create an object using the new resource type.
+4. Retrieve or list the object.
+5. Delete the CRD.
+6. Confirm that the resource is no longer available.
+
+This verifies that runtime extension works from registration through removal.
+
+**Controllers**
+
+Controllers should be tested by publishing events directly rather than requiring
+a full HTTP workflow for every case.
+
+For example:
+
+1. Create a controller with a test registry.
+2. Publish an `ADDED` event.
+3. Wait for reconciliation.
+4. Confirm that the controller performed its update.
+5. Confirm that the update generated the expected `MODIFIED` event.
+
+This ensures that controllers correctly react to state changes and that their
+actions flow through the same event pipeline as normal API operations.
+
+### Why these tests matter
+
+The architecture of the framework depends heavily on loose coupling. That is one
+of its strengths, but it also means failures can appear far away from their
+source. A small change in one package may affect discovery, events, or dynamic
+resources without producing a compile-time error.
+
+A good test suite becomes the executable description of the framework's
+contracts. It documents what each layer promises and provides confidence when
+new features are added.
+
+The final goal is not simply higher code coverage. The goal is confidence that
+the system behaves as a complete platform: resources can be stored, discovered,
+extended, watched, and reconciled without breaking the pieces that already work.
+
 
 ### Run everything
 
@@ -7539,7 +7684,7 @@ go build -o apictl ./cmd/apictl
 ./apictl delete crd invoices.example.io
 ```
 
-**Listing 16.1 — `examples/user-1.json`**
+**Listing 16.3 — `examples/user-1.json`**
 
 ```json
 {
@@ -7553,8 +7698,8 @@ go build -o apictl ./cmd/apictl
 
 ### Checkpoint
 
-`go test ./...` is green and the manual flow behaves as described. You have a tested,
-working system.
+`go test ./...` is green and the manual flow behaves as described. You have a
+tested, working system.
 
 ---
 
@@ -7562,34 +7707,224 @@ working system.
 
 ### What you built
 
-- A generic router that never changes while capabilities grow at runtime.
-- Clean separation between registry, scheme, router, and storage.
-- Two runtime-extension paths: declarative CRDs and compiled plugins.
-- A real-time watch API and a controller framework for reconciliation.
-- A discovery-driven CLI that adapts to new resources automatically.
+Over the course of this project, the framework evolved from a small CRUD API
+into a dynamic API platform. The important achievement is not any single
+feature, but the way the pieces fit together.
+
+The server now has a generic request path that does not need to be rewritten
+every time a new resource appears. The router does not contain special cases for
+users, orders, invoices, or future resources. Instead, it discovers what exists
+through the registry and delegates operations through common interfaces. New
+capabilities can be added at runtime without changing the core HTTP handling
+code.
+
+The foundation of this design is a clean separation between the major subsystems:
+
+* The **registry** answers the question: "What resources exist?"
+* The **scheme** answers the question: "How do I create objects of those types?"
+* The **router** translates HTTP requests into generic API operations.
+* The **storage layer** owns persistence behavior.
+* The **event bus** distributes changes to interested consumers.
+* The **controllers** react to changes and drive reconciliation.
+
+Because these responsibilities are separated, each layer can evolve
+independently. Storage can change without affecting the router. New resource
+types can appear without modifying API handlers. Controllers can add business
+behavior without coupling that logic to HTTP requests.
+
+The framework also supports two different approaches for extending the API.
+
+The first is declarative extension through **Custom Resource Definitions
+(CRDs)**. A user can describe a new resource type at runtime by providing its
+group, version, kind, plural name, and schema. The server can then expose that
+resource through the same discovery and API mechanisms used by built-in
+resources.
+
+The second is compiled extension through **plugins**. Plugins allow developers
+to package custom Go code that registers resources, types, and behavior directly
+with the server. This approach is useful when a resource requires specialized
+logic that cannot be expressed through a schema alone.
+
+Together, these two extension mechanisms provide flexibility at different
+levels: CRDs allow users to introduce new data models, while plugins allow
+developers to add new capabilities.
+
+The watch API and controller framework complete the event-driven architecture.
+Clients no longer need to repeatedly poll for changes. They can subscribe to a
+stream and receive updates as they happen. Controllers use the same event
+mechanism to observe changes and reconcile resources toward a desired state.
+
+Finally, the command-line client became discovery-driven rather than hardcoded.
+Instead of knowing every possible resource in advance, `apictl` asks the server
+what is available and adapts automatically. This means the client can work with
+resources that did not exist when the client binary was compiled.
+
+The result is a small but complete example of a modern control-plane
+architecture: dynamic resources, discovery, extensibility, event propagation,
+and reconciliation.
 
 ### What to harden next
 
-The in-memory design is perfect for learning and prototyping. To run this for real,
-consider:
+The current implementation intentionally favors clarity over operational
+complexity. An in-memory server is ideal for learning the architecture because
+every component is easy to inspect and the feedback loop is immediate. However,
+production systems require stronger guarantees around persistence, security,
+reliability, and operations.
 
-1. **Persistent storage.** Implement the `Storage` interface against Postgres or
-   etcd. Nothing above storage changes — that is the point of the interface.
-2. **Auth and audit.** Add authentication/authorization middleware and an audit log.
-3. **Schema validation.** Validate CRD objects against their declared schema on write.
-4. **Event durability.** Back the event bus with a log (Kafka, NATS, etc.) for replay
-   and at-least-once delivery; add bounded-queue and backpressure policies.
-5. **Observability.** Emit metrics and traces from middleware and the event bus.
-6. **Plugin safety.** Go plugins share the host process; sandbox untrusted code or
-   prefer out-of-process extensions (subprocess/RPC) for isolation.
-7. **Versioning and conversion.** Support multiple versions per group with conversion.
+The next step is replacing the prototype pieces with production-grade
+implementations while preserving the same interfaces.
+
+**1. Persistent storage**
+
+The current memory storage backend is intentionally simple. It stores objects
+inside the process and loses all data when the server exits.
+
+A production deployment would implement the `Storage` interface using a durable
+backend such as Postgres, etcd, or another database system. The rest of the
+framework does not need to know which backend is used because storage access
+already happens through an abstraction boundary.
+
+This is the value of the interface design: changing persistence should not
+require rewriting controllers, routers, clients, or resources.
+
+**2. Authentication and authorization**
+
+A real API server must control who can access which resources.
+
+Authentication verifies identity: who is making the request. Authorization
+decides what that identity is allowed to do.
+
+Production hardening typically adds middleware that checks:
+
+* User or service identity.
+* Allowed resources.
+* Allowed operations.
+* Namespace or tenant boundaries.
+* Administrative privileges.
+
+An audit system should record important actions such as resource creation,
+modification, deletion, and access attempts. This provides visibility into what
+changed, when it changed, and who initiated the action.
+
+**3. Schema validation**
+
+The current CRD system stores schema information but does not yet enforce it.
+
+A production implementation should validate objects against their declared
+schema before accepting writes. This prevents invalid objects from entering the
+system and allows clients to receive useful validation errors immediately.
+
+Validation can include:
+
+* Required fields.
+* Field types.
+* String formats.
+* Numeric ranges.
+* Enumerated values.
+* Nested object validation.
+
+Schema validation turns CRDs from documentation into enforceable contracts.
+
+**4. Event durability**
+
+The current event bus is optimized for simplicity and low latency. Events exist
+only while the process is running, and subscribers must keep up with the stream.
+
+Production event systems often require stronger guarantees:
+
+* Persistent event history.
+* Replay after failure.
+* At-least-once delivery.
+* Consumer offsets.
+* Retry handling.
+* Backpressure policies.
+
+A durable event layer could be built using systems such as Kafka or NATS. The
+event bus abstraction makes this possible because the rest of the framework does
+not need to know whether events are delivered through memory channels or a
+distributed log.
+
+Additional protections are also needed around queue growth. A production system
+must define what happens when consumers are slower than producers: buffering,
+dropping, blocking, retrying, or applying flow control.
+
+**5. Observability**
+
+A production platform needs to explain what it is doing.
+
+The next step is adding metrics and traces throughout the system:
+
+* Request latency.
+* Resource operation counts.
+* Event delivery rates.
+* Controller reconciliation duration.
+* Failed operations.
+* Queue depth.
+* Plugin loading status.
+
+Distributed tracing can connect a user request with the events and controller
+actions that follow it. This is especially valuable in event-driven systems
+where a single API request may trigger many asynchronous operations.
+
+**6. Plugin safety**
+
+The plugin system demonstrates runtime extensibility, but Go plugins have an
+important limitation: they execute inside the same process as the API server.
+
+A faulty or malicious plugin can affect the entire server by:
+
+* Crashing the process.
+* Consuming excessive resources.
+* Accessing internal memory.
+* Blocking execution.
+
+For trusted internal extensions, in-process plugins may be acceptable. For
+untrusted or third-party extensions, a safer design is usually an out-of-process
+model using subprocesses and RPC communication.
+
+The tradeoff is additional complexity in exchange for stronger isolation.
+
+**7. Versioning and conversion**
+
+As APIs mature, resource definitions change. A field may be renamed, a structure
+may be redesigned, or new versions may need to coexist with old clients.
+
+A production API platform should support:
+
+* Multiple versions within the same API group.
+* Version-specific schemas.
+* Conversion between versions.
+* Deprecation policies.
+* Compatibility guarantees.
+
+This allows APIs to evolve without forcing every client and controller to
+upgrade simultaneously.
 
 ### Checkpoint
 
-You can build the whole system from an empty directory, explain every layer, and see
-a clear path to production. That was the goal.
+The system you built is intentionally small, but it contains the same
+architectural ideas found in much larger platforms.
 
----
+You can start from an empty directory, build the server, explain the purpose of
+each layer, and follow the complete lifecycle of a resource:
+
+1. A resource is registered or discovered.
+2. A client creates or modifies an object.
+3. Storage persists the change.
+4. The event bus publishes the transition.
+5. Watch clients receive updates.
+6. Controllers react and reconcile state.
+7. New state changes flow through the same pipeline.
+
+The important lesson is that production systems are rarely built by adding
+features directly into a central handler. They are built by creating stable
+interfaces and letting capabilities grow around them.
+
+The framework now has a clear path forward. The in-memory implementation can
+become persistent storage. The local event bus can become a distributed event
+system. The simple plugin loader can become a secure extension framework. The
+prototype has the architecture needed to grow into a production system.
+
 
 # Appendices
 
