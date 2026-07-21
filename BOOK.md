@@ -180,7 +180,7 @@ Create the module and directory layout we will fill in throughout the book.
 We will build this structure. Do not create the files' contents yet; just make
 the folders and the module. Each file is filled in by a later chapter.
 
-```
+```text
 api-server/
 ├── go.mod
 ├── cmd/
