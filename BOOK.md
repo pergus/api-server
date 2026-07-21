@@ -3496,8 +3496,41 @@ server grows and new resource types appear.
 
 # Part IV — Runtime Extensibility
 
-So far, resources are compiled in. Now we make the server *truly* dynamic: users can
-define new types at runtime (CRDs) or drop in compiled plugins.
+So far, resources are compiled in. Now we make the server *truly* dynamic: users
+can define new types at runtime (CRDs) or drop in compiled plugins.
+
+Up to this point, the server has demonstrated dynamic behavior through the
+registry and generic handlers, but the available resources have still been
+decided ahead of time by the application developer. Users, products, and orders
+exist because their Go types and resource implementations were included when the
+server was built.
+
+The next step removes that limitation. Instead of requiring every resource to be
+known at compile time, the server will gain the ability to extend itself while
+it is running. New resource types can be introduced without modifying the core
+server, rebuilding the application, or changing the existing API routes.
+
+Custom Resource Definitions (CRDs) provide one way to achieve this. A CRaD
+describes a new resource using data: its name, group, version, schema, and other
+metadata. The server reads this definition at runtime, creates the necessary
+registration entries, and immediately exposes the new resource through the same
+generic API used by built-in resources.
+
+Plugins provide a second extension mechanism. Instead of describing a resource
+with data, a plugin can contain compiled Go code that adds new behavior to the
+running server. Plugins can register resources, types, commands, or other
+capabilities while keeping the main server application unchanged.
+
+These two approaches serve different purposes. CRDs are ideal when a resource
+can be described through configuration and data. Plugins are useful when a
+resource requires custom logic, integrations, or behavior that cannot be
+expressed through a schema alone.
+
+Together, they transform the server from a fixed application into an extensible
+platform. The core server provides the routing, storage, discovery, and
+lifecycle management, while extensions provide the resources and capabilities
+that run on top of it.
+
 
 ## Chapter 10: Custom Resource Definitions
 
@@ -3522,8 +3555,92 @@ flowchart TD
 
 ### The CRD registry
 
-A `CRDDefinition` describes a type; the registry stores them and indexes by plural for
-fast lookup.
+### The CRD registry
+
+A `CRDDefinition` describes a new resource type that can be introduced while the
+server is running. Instead of defining a Go struct and recompiling the
+application, users can provide a resource description containing the information
+the server needs to expose the new API.
+
+The CRD registry is responsible for storing these definitions and making them
+available to the rest of the system. It acts as the source of truth for
+dynamically created resources, allowing the API server to discover what custom
+resources exist, route requests correctly, and provide metadata about those
+resources.
+
+A `CRDDefinition` contains the core pieces of information required to identify a
+resource. The `Group` and `Version` fields determine where the resource exists
+in the API hierarchy, while `Kind` describes the object type from the user's
+perspective. The `Plural` field is the name used in API paths and commands, such
+as `invoices` or `reports`. The optional `Schema` field stores the structure of
+the resource, allowing clients and tools to understand which fields are
+available.
+
+Before a CRD can be registered, it must pass validation. The `Validate` method
+checks that all required identity fields are present. Without a group, version,
+kind, or plural name, the server would not know how to expose the resource or
+how to route requests to it. Keeping this validation close to the definition
+ensures that invalid resource descriptions are rejected before they enter the
+registry.
+
+The `FullName` method creates a unique identifier for a CRD by combining its
+plural name and group. For example, an `invoices` resource in the `example.io`
+group becomes `invoices.example.io`. This format provides a stable name that can
+be used when retrieving or removing a CRD.
+
+The `APIPath` method generates the URL path where the resource will be exposed.
+For example, a resource with group `example.io`, version `v1`, and plural
+`invoices` maps to:
+
+```
+/apis/example.io/v1/invoices
+```
+
+This follows the same pattern used by many extensible API systems: groups
+separate different families of resources, versions allow schemas to evolve over
+time, and plural names identify the collection being accessed.
+
+The `CRDRegistry` interface defines the operations required to manage these
+definitions. The rest of the server depends only on this interface rather than a
+specific implementation. This keeps the design flexible and allows the storage
+mechanism to change later without affecting the router or other components.
+
+The registry supports five main operations:
+
+* `RegisterCRD` adds a new resource definition.
+* `UnregisterCRD` removes an existing definition.
+* `GetCRD` retrieves a CRD using its full name.
+* `ListCRDs` returns all registered custom resources.
+* `FindByPlural` performs a fast lookup using the resource name used in API paths.
+
+The `SimpleCRDRegistry` implementation uses two maps internally. The first map
+stores CRDs by their full name, which provides direct access when a complete
+identifier is available. The second map indexes CRDs by plural name, allowing
+the router to quickly determine whether a request refers to a custom resource.
+
+Because CRDs can be added and removed while requests are being processed, the
+registry must be safe for concurrent access. The implementation uses a
+`sync.RWMutex` to protect the maps. Read operations such as lookup and listing
+use a read lock, allowing multiple requests to inspect the registry at the same
+time. Write operations such as registration and removal use an exclusive lock to
+prevent inconsistent state.
+
+When a CRD is registered, the registry first validates the definition and then
+checks whether a resource with the same full name already exists. Duplicate
+registrations are rejected to prevent accidental replacement of an existing
+resource definition.
+
+Removing a CRD updates both indexes. The full-name entry is deleted from the
+main map, and the plural lookup entry is removed from the secondary index.
+Maintaining both maps together ensures that future lookups cannot return stale
+resource definitions.
+
+The registry is the foundation for runtime resource creation. Later components
+will use it to expose new API endpoints, generate discovery information, and
+connect dynamically defined resources to storage. By keeping CRD management
+separate from the core router and handlers, the server gains the ability to grow
+at runtime without changing the code that handles requests.
+
 
 **Listing 10.1 — `pkg/api/crd.go`**
 
@@ -3536,6 +3653,8 @@ import (
 )
 
 // CRDDefinition represents a Custom Resource Definition.
+// This is how the API server allows arbitrary new resources to be registered at
+// runtime.
 type CRDDefinition struct {
 	Group   string                 `json:"group"`
 	Version string                 `json:"version"`
@@ -3544,6 +3663,7 @@ type CRDDefinition struct {
 	Schema  map[string]interface{} `json:"schema"`
 }
 
+// Validate checks if the CRD definition is valid.
 func (c *CRDDefinition) Validate() error {
 	if c.Group == "" {
 		return fmt.Errorf("group is required")
@@ -3563,17 +3683,27 @@ func (c *CRDDefinition) Validate() error {
 // FullName returns "plural.group", e.g. "invoices.example.io".
 func (c *CRDDefinition) FullName() string { return fmt.Sprintf("%s.%s", c.Plural, c.Group) }
 
-// APIPath returns "/apis/{group}/{version}/{plural}".
+// APIPath returns "/apis/{group}/{version}/{plural}" for this CRD.
+// e.g., /apis/example.io/v1/invoices
 func (c *CRDDefinition) APIPath() string {
 	return fmt.Sprintf("/apis/%s/%s/%s", c.Group, c.Version, c.Plural)
 }
 
 // CRDRegistry manages Custom Resource Definitions.
 type CRDRegistry interface {
+	// RegisterCRD registers a new CRD.
 	RegisterCRD(crd *CRDDefinition) error
+
+	// UnregisterCRD removes a CRD.
 	UnregisterCRD(fullName string) error
+
+	// GetCRD retrieves a CRD by its full name.
 	GetCRD(fullName string) (*CRDDefinition, bool)
+
+	// ListCRDs returns all registered CRDs.
 	ListCRDs() []*CRDDefinition
+
+	// FindByPlural finds a CRD by its plural name.
 	FindByPlural(plural string) (*CRDDefinition, bool)
 }
 
@@ -3584,6 +3714,7 @@ type SimpleCRDRegistry struct {
 	byKey map[string]string         // plural   -> fullName
 }
 
+// NewCRDRegistry creates a new CRD registry.
 func NewCRDRegistry() CRDRegistry {
 	return &SimpleCRDRegistry{
 		crds:  make(map[string]*CRDDefinition),
@@ -3591,6 +3722,7 @@ func NewCRDRegistry() CRDRegistry {
 	}
 }
 
+// RegisterCRD registers a new CRD.
 func (r *SimpleCRDRegistry) RegisterCRD(crd *CRDDefinition) error {
 	if err := crd.Validate(); err != nil {
 		return err
@@ -3607,6 +3739,7 @@ func (r *SimpleCRDRegistry) RegisterCRD(crd *CRDDefinition) error {
 	return nil
 }
 
+// UnregisterCRD removes a CRD.
 func (r *SimpleCRDRegistry) UnregisterCRD(fullName string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -3620,13 +3753,16 @@ func (r *SimpleCRDRegistry) UnregisterCRD(fullName string) error {
 	return nil
 }
 
+// GetCRD retrieves a CRD by its full name.
 func (r *SimpleCRDRegistry) GetCRD(fullName string) (*CRDDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	crd, exists := r.crds[fullName]
 	return crd, exists
 }
 
+// ListCRDs returns all registered CRDs in sorted order.
 func (r *SimpleCRDRegistry) ListCRDs() []*CRDDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -3637,6 +3773,7 @@ func (r *SimpleCRDRegistry) ListCRDs() []*CRDDefinition {
 	return crds
 }
 
+// FindByPlural finds a CRD by its plural name.
 func (r *SimpleCRDRegistry) FindByPlural(plural string) (*CRDDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -3650,9 +3787,89 @@ func (r *SimpleCRDRegistry) FindByPlural(plural string) (*CRDDefinition, bool) {
 
 ### Dynamic objects
 
-A CRD has no compiled Go struct, so we need an object that holds arbitrary JSON while
-still satisfying the framework's expectation of an `id` field. `DynamicObject` maps a
-flat `id` to `metadata.name` on the way in and flattens back on the way out.
+A CRD introduces a new resource type without introducing a new Go type. This
+creates an important difference from the built-in resources used earlier in the
+project. A `User` or `Product` has a concrete struct defined in source code, so
+the compiler knows every field that exists. A custom resource does not have that
+luxury: its structure is only known after the server reads the CRD definition at
+runtime.
+
+To support these resources, the server needs a generic object representation
+that can hold arbitrary JSON fields while still behaving like every other API
+object. `DynamicObject` provides this bridge. It stores the standard API fields
+such as `apiVersion`, `kind`, and `metadata`, while allowing resource-specific
+fields to be stored without requiring a predefined struct.
+
+The most important compatibility requirement is the object identifier. The
+storage layer and generic handlers expect resources to have an `id` value, but
+many API-style resources use the Kubernetes-inspired `metadata.name` convention
+instead. `DynamicObject` handles this difference by translating between the two
+formats.
+
+When JSON enters the server, the custom `UnmarshalJSON` method checks whether
+the object contains a top-level `id` field. If it does, that value is moved into
+`metadata.name`. Internally, the object then follows the standard metadata-based
+representation. This allows existing clients that send simple objects with an
+`id` field to work with dynamically created resources without requiring any
+changes.
+
+The reverse happens when the object is returned to a client. The custom
+`MarshalJSON` method takes the internal representation and converts it back into
+a flat JSON structure. The value stored in `metadata.name` is exposed as the
+top-level `id` field, and fields stored inside `spec` and `data` are moved back
+into the top-level object. This keeps the external API format consistent with
+the built-in resources already supported by the server.
+
+The `GetID` method provides the storage layer with a standard way to retrieve
+the object's identifier. Instead of knowing anything about the structure of a
+custom resource, storage simply asks the object for its ID. The method validates
+that metadata exists, that `metadata.name` is present, and that the value is a
+valid non-empty string.
+
+The custom JSON methods are what allow dynamic resources to participate in the
+same generic CRUD pipeline as compiled resources. The router does not need
+separate logic for CRDs. The storage layer does not need to understand arbitrary
+schemas. The generic handlers can continue working because the dynamic object
+adapts runtime-defined resources to the interfaces already used by the
+framework.
+
+The `DynamicResource` type connects a CRD definition to the existing resource
+system. It implements the same `Resource` interface used by built-in resources,
+which means the generic router can treat it exactly like users, products, and
+orders.
+
+A dynamic resource contains two important pieces of information: the CRD
+definition that describes the resource and the storage backend that holds its
+objects. The CRD provides metadata such as the resource name, group, version,
+and kind. The storage provides the runtime data operations needed by the generic
+handlers.
+
+`NewDynamicResource` creates a resource from a CRD definition and assigns it a
+memory storage backend. Later chapters can replace or extend this storage
+behavior, but the important idea is that the resource lifecycle is identical
+whether the type was compiled into the server or created dynamically.
+
+The `Name` method returns the plural resource name from the CRD. This is the
+name used by API paths and discovery. For example, a CRD defining an `Invoice`
+type with a plural name of `invoices` becomes available through the same generic
+endpoints used by built-in resources.
+
+The `NewObject` method creates an empty instance of the dynamic object. It
+initializes the API version and kind from the CRD definition and prepares empty
+metadata and specification maps. When a client sends a create request, the
+generic handler asks the resource for a new object, decodes JSON into it, and
+stores it without needing to know anything about the fields inside the resource.
+
+The `CRD` method exposes the original definition so other parts of the system
+can inspect the schema and metadata associated with the resource. This will be
+used later by discovery endpoints, schema inspection commands, and other runtime
+features.
+
+Dynamic objects are the key piece that completes the transition from a server
+with configurable resources to a server with runtime-defined resources. The same
+routing, storage, discovery, and client code now works for both compiled-in
+types and resources that did not exist when the application was built.
+
 
 **Listing 10.2 — `pkg/api/dynamic.go`**
 
@@ -3664,7 +3881,9 @@ import (
 	"fmt"
 )
 
-// DynamicObject holds arbitrary JSON without a compiled Go struct.
+// DynamicObject represents a generic API-like object.
+// It can hold any JSON data without requiring a compiled Go struct.
+// This is how the API server stores Custom Resources.
 type DynamicObject struct {
 	APIVersion string                 `json:"apiVersion"`
 	Kind       string                 `json:"kind"`
@@ -3678,27 +3897,33 @@ func (d *DynamicObject) GetID() (string, error) {
 	if d.Metadata == nil {
 		return "", fmt.Errorf("metadata is nil")
 	}
+
 	name, exists := d.Metadata["name"]
 	if !exists {
 		return "", fmt.Errorf("metadata.name not found")
 	}
+
 	id, ok := name.(string)
 	if !ok {
 		return "", fmt.Errorf("metadata.name is not a string")
 	}
+
 	if id == "" {
 		return "", fmt.Errorf("metadata.name is empty")
 	}
+
 	return id, nil
 }
 
-// UnmarshalJSON accepts flat JSON and normalizes it: "id" -> metadata.name,
-// unknown top-level fields -> spec.
+// UnmarshalJSON implements custom JSON unmarshalling.
+// This allows the object to accept flat JSON structures and normalize them.
 func (d *DynamicObject) UnmarshalJSON(data []byte) error {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
+
+	// If the incoming JSON has an "id" field, move it to metadata.name
 	if id, exists := raw["id"]; exists {
 		if d.Metadata == nil {
 			d.Metadata = make(map[string]interface{})
@@ -3706,14 +3931,19 @@ func (d *DynamicObject) UnmarshalJSON(data []byte) error {
 		d.Metadata["name"] = id
 		delete(raw, "id")
 	}
+
+	// Preserve apiVersion and kind if present
 	if apiVersion, exists := raw["apiVersion"]; exists {
-		d.APIVersion, _ = apiVersion.(string)
+		d.APIVersion = apiVersion.(string)
 		delete(raw, "apiVersion")
 	}
+
 	if kind, exists := raw["kind"]; exists {
-		d.Kind, _ = kind.(string)
+		d.Kind = kind.(string)
 		delete(raw, "kind")
 	}
+
+	// Everything else goes into spec (or data for backwards compatibility)
 	if d.Spec == nil {
 		d.Spec = make(map[string]interface{})
 	}
@@ -3722,47 +3952,71 @@ func (d *DynamicObject) UnmarshalJSON(data []byte) error {
 			d.Spec[k] = v
 		}
 	}
+
+	// Ensure metadata exists
 	if d.Metadata == nil {
 		d.Metadata = make(map[string]interface{})
 	}
+
 	return nil
 }
 
-// MarshalJSON flattens back to a simple structure with a top-level "id".
+
+// MarshalJSON implements custom JSON marshalling.
+// Returns a flat structure for backwards compatibility.
 func (d *DynamicObject) MarshalJSON() ([]byte, error) {
 	result := make(map[string]interface{})
+
+	// Add apiVersion and kind if present
 	if d.APIVersion != "" {
 		result["apiVersion"] = d.APIVersion
 	}
 	if d.Kind != "" {
 		result["kind"] = d.Kind
 	}
+
+	// Add id from metadata.name for backwards compatibility
 	if d.Metadata != nil {
 		if name, exists := d.Metadata["name"]; exists {
 			result["id"] = name
 		}
 	}
-	for k, v := range d.Spec {
-		result[k] = v
+
+	// Add all spec fields at the top level
+	if d.Spec != nil {
+		for k, v := range d.Spec {
+			result[k] = v
+		}
 	}
-	for k, v := range d.Data {
-		result[k] = v
+
+	// Add data fields if present
+	if d.Data != nil {
+		for k, v := range d.Data {
+			result[k] = v
+		}
 	}
+
 	return json.Marshal(result)
 }
 
-// DynamicResource adapts a CRD to the Resource interface.
+// DynamicResource is a Resource implementation for CRD-based resources.
+// It wraps a CRD definition with in-memory storage and generic object handling.
 type DynamicResource struct {
 	crd     *CRDDefinition
 	storage Storage
 }
 
+// NewDynamicResource creates a new dynamic resource for a CRD.
 func NewDynamicResource(crd *CRDDefinition) *DynamicResource {
 	return &DynamicResource{crd: crd, storage: NewMemoryStorage()}
 }
 
-func (r *DynamicResource) Name() string { return r.crd.Plural }
+// Name returns the plural name of the resource.
+func (r *DynamicResource) Name() string { 
+	return r.crd.Plural 
+}
 
+// NewObject returns a new DynamicObject.
 func (r *DynamicResource) NewObject() any {
 	return &DynamicObject{
 		APIVersion: fmt.Sprintf("%s/%s", r.crd.Group, r.crd.Version),
@@ -3772,8 +4026,15 @@ func (r *DynamicResource) NewObject() any {
 	}
 }
 
-func (r *DynamicResource) Storage() Storage    { return r.storage }
-func (r *DynamicResource) CRD() *CRDDefinition { return r.crd }
+// Storage returns the storage backend.
+func (r *DynamicResource) Storage() Storage {
+	return r.storage
+}
+
+// CRD returns the CRD definition.
+func (r *DynamicResource) CRD() *CRDDefinition {
+	return r.crd
+}
 ```
 
 Because `DynamicObject` marshals to `{"id": ..., ...spec}`, the storage layer's
@@ -3913,6 +4174,83 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 
 ### A CRD definition file
 
+A CRD definition is the description of a new resource type. Instead of creating
+a Go struct and adding a new resource implementation to the server, users
+provide a document that tells the API server what the resource is called, where
+it belongs in the API hierarchy, and what fields it supports.
+
+The example below defines an `Invoice` resource. Once this CRD is registered,
+the server can create a new API endpoint for invoices and handle invoice objects
+through the same generic CRUD handlers used by built-in resources.
+
+The top-level `apiVersion` and `kind` fields describe the document itself. In
+this example, the document is a `CustomResourceDefinition` understood by the API
+server. The `apiVersion` value identifies the CRD API format being used.
+
+The `metadata.name` field gives the CRD a unique name. By convention, this
+combines the resource plural name with the API group. In this case,
+`invoices.example.io` identifies the invoice resource within the `example.io`
+API group.
+
+The fields inside `spec` describe the resource being created. The `group` field
+places the resource into an API group, allowing related resources to be
+organized together. The `version` field allows the resource definition to evolve
+over time without breaking existing clients. The `kind` field defines the
+singular object type, while `plural` defines the collection name used in API
+paths.
+
+For this example, the resulting resource identity is:
+
+```
+Group:   example.io
+Version: v1
+Kind:    Invoice
+Plural:  invoices
+```
+
+This information allows the server to expose the resource through an endpoint
+such as:
+
+```
+/apis/example.io/v1/invoices
+```
+
+The `schema` section describes the fields that can appear on invoice objects.
+The schema is intentionally simple in this example, but it demonstrates the core
+idea: the server can understand the shape of a resource without having a
+compiled Go type.
+
+The `customer`, `amount`, and `status` fields describe the business data stored
+inside the invoice. The schema can provide additional metadata such as field
+descriptions, which can later be used by tools such as the CLI `explain` command
+to help users understand available fields.
+
+After the CRD has been registered, clients can create objects of this new type.
+The sample invoice object demonstrates how a dynamically created resource looks
+when sent to the API server.
+
+Unlike the CRD itself, the object represents an actual instance of the resource.
+The `kind` field identifies the object type, while the `id` field provides the
+unique identifier used by the generic storage layer. The remaining fields
+contain the invoice data.
+
+The important detail is that this object does not require a Go struct named
+`Invoice`. The server receives the JSON, creates a `DynamicObject`, and stores
+the fields generically. The same create, list, get, update, and delete
+operations already used by built-in resources can now operate on invoices.
+
+This example shows the complete lifecycle of a runtime-defined resource:
+
+1. A user creates a CRD describing the new resource type.
+2. The server registers the definition in the CRD registry.
+3. A dynamic resource is created from that definition.
+4. The resource becomes visible through discovery.
+5. Clients can create and manage objects using the normal API endpoints.
+
+The result is a server that can grow beyond the resources included in its
+original source code. New concepts can be introduced through data alone, while
+the existing API infrastructure continues to handle them automatically.
+
 **Listing 10.4 — `examples/invoice-crd.yaml`**
 
 ```yaml
@@ -3972,7 +4310,8 @@ With the server running:
 ./apictl api-resources           # invoices is gone again
 ```
 
-A brand-new resource appeared and disappeared without touching a line of server code.
+A brand-new resource appeared and disappeared without touching a line of server
+code. 
 
 ---
 
@@ -3980,34 +4319,140 @@ A brand-new resource appeared and disappeared without touching a line of server 
 
 ### Goal
 
-Add Kubernetes-style discovery beyond `/api`: list API *groups* and the resources
-within a group and version. This is what lets clients understand the whole surface,
-including CRDs.
+Add Kubernetes-style discovery beyond `/api`: list API *groups* and the
+resources within a group and version. This is what lets clients understand the
+whole surface, including CRDs.
+
+The original `/api` endpoint introduced earlier provides a simple view of the
+server by returning the names of available resources. This is enough for basic
+clients, but it does not describe where those resources belong or how they are
+versioned.
+
+As the server becomes more extensible, a flat resource list is no longer
+sufficient. Built-in resources, custom resources, and future extensions may come
+from different API groups and versions. Clients need a way to discover the
+complete API structure before they attempt to interact with resources.
+
+This chapter adds a second level of discovery through the `/apis` hierarchy.
+Instead of only asking "what resources exist?", clients can now ask "what API
+groups exist?" and "what resources belong to a particular group and version?"
+
+This discovery model follows the same idea used by Kubernetes-style APIs: the
+API surface is organized into groups, versions, and resources. A client can
+begin with no knowledge of the server, walk the discovery endpoints, and learn
+exactly what operations and resource types are available.
+
+The discovery system is especially important for CRDs. Since custom resources
+are created dynamically, the server cannot know their names when it is compiled.
+Discovery provides the bridge between runtime extensibility and client
+usability. Once a user registers a new CRD, clients can discover it through the
+same endpoints used for built-in resources.
 
 ### Discovery handlers
 
-These are the remaining router methods referenced by `Setup`.
+These handlers complete the discovery routes registered earlier in the router
+setup. The router itself remains unchanged as resources are added or removed;
+instead, these methods inspect the live registries whenever a discovery request
+arrives.
+
+The `discoverAPIs` method handles `GET /apis`. Its purpose is to return the list
+of API groups currently available on the server.
+
+The method first validates that the request uses the GET method. Discovery
+endpoints are read-only, so other HTTP methods are rejected.
+
+It then collects group names from two sources. Built-in resources are placed
+into the default `api.example.io` group, while dynamically created resources
+contribute their own groups from their CRD definitions. A map is used while
+collecting groups so duplicate entries are automatically removed.
+
+For example, a server containing the built-in users resource and an invoice CRD
+might return groups such as:
+
+```text
+api.example.io
+example.io
+```
+
+The important detail is that the result is generated dynamically. If a new CRD
+is registered while the server is running, the next discovery request
+automatically includes its API group.
+
+The `discoverAPIPath` method handles more detailed discovery requests under
+`/apis`. It supports paths representing either an API group or a specific group
+and version.
+
+For example:
+
+```text
+GET /apis/example.io
+```
+
+asks for information about the `example.io` group.
+
+A more specific request:
+
+```text
+GET /apis/example.io/v1
+```
+
+asks for resources available in version `v1` of that group.
+
+The method parses the request path, extracts the group and optional version, and
+then searches the CRD registry for matching resources. Each matching CRD
+contributes a resource description containing its plural name, kind, and
+version.
+
+The response gives clients enough information to understand what resources exist
+inside that part of the API hierarchy. A client does not need to know that
+invoices, reports, or any other custom resources were created after the server
+started. It can discover them by querying the API.
+
+The `listPlugins` method is included as a placeholder for future extension.
+Plugins will be introduced later, but the route is registered now so the API
+structure is ready for that feature.
+
+At this stage, the endpoint returns an empty plugin list with a consistent
+response shape. Future chapters will connect this endpoint to the plugin loader
+so clients can discover installed extensions in the same way they discover
+resources.
+
+Together, these discovery handlers complete the transition from a server with
+known resources to a server that can describe itself. Clients no longer need
+hard-coded knowledge about available APIs. They can query discovery endpoints,
+learn the current API surface, and interact with resources that may not have
+existed when the client was written.
+
 
 **Listing 11.1 — `pkg/api/router.go` (discovery + plugins stub)**
 
 ```go
-// discoverAPIs handles GET /apis and returns the set of API groups.
+// discoverAPIs handles GET /apis
+// Returns all API groups
 func (r *Router) discoverAPIs(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Collect unique groups from built-in and CRD resources
 	groups := make(map[string]bool)
+
+	// Add built-in resources to a default group
 	if len(r.registry.List()) > 0 {
 		groups["api.example.io"] = true
 	}
+
+	// Add CRD groups
 	for _, crd := range r.crdRegistry.ListCRDs() {
 		groups[crd.Group] = true
 	}
+
 	groupList := make([]string, 0, len(groups))
 	for g := range groups {
 		groupList = append(groupList, g)
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"groups":    groupList,
@@ -4015,66 +4460,128 @@ func (r *Router) discoverAPIs(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// discoverAPIPath handles GET /apis/{group} and /apis/{group}/{version}.
+// discoverAPIPath handles GET /apis/{group} and /apis/{group}/{version}
 func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	path := strings.TrimPrefix(req.URL.Path, "/apis/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+
 	if len(parts) == 0 || parts[0] == "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+
 	group := parts[0]
 	version := ""
 	if len(parts) > 1 {
 		version = parts[1]
 	}
+
+	// Filter CRDs by group and version
 	resources := make([]map[string]interface{}, 0)
 	for _, crd := range r.crdRegistry.ListCRDs() {
 		if crd.Group == group && (version == "" || crd.Version == version) {
 			resources = append(resources, map[string]interface{}{
-				"name": crd.Plural, "kind": crd.Kind, "version": crd.Version,
+				"name":    crd.Plural,
+				"kind":    crd.Kind,
+				"version": crd.Version,
 			})
 		}
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"group": group, "version": version, "resources": resources,
+		"group":     group,
+		"version":   version,
+		"resources": resources,
 	})
 }
 
-// listPlugins handles GET /plugins. A placeholder for now; Chapter 12 discusses
-// wiring it to the loader.
+// listPlugins handles GET /plugins
+// Returns information about loaded plugins (framework endpoint for future enhancement)
 func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// For now, return a simple response structure
+	// In the future, this will be connected to the plugin loader
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"plugins": []interface{}{}, "count": 0,
+		"plugins": []interface{}{},
+		"count":   0,
 	})
 }
 ```
 
-To make discovery show the built-ins under `api.example.io`, register a CRD schema for
-each built-in in `main()` (optional but nice). For example, after registering users:
+To make the discovery API present a complete picture of the server, the built-in
+resources can also be described through the same CRD metadata system used for
+dynamically created resources. This does not make the built-in resources dynamic
+— they are still compiled Go types registered through `RegisterResource` — but
+it gives clients a consistent way to discover their shape.
+
+Without these definitions, `/api` will still list the built-in resources because
+they exist in the normal resource registry. However, the richer discovery
+endpoints introduced in this chapter need additional metadata to describe things
+such as the API group, version, kind, and schema. Registering CRD-style
+descriptions for built-ins bridges that gap and allows tools such as `apictl
+explain` to display useful information for both built-in and runtime-created
+resources.
+
+The registration is intentionally lightweight. The schema is only descriptive
+metadata; it is not replacing Go structs, changing storage behavior, or altering
+how requests are handled. The existing `User`, `Product`, and `Order` resources
+continue to use their normal typed implementations. The CRD registry simply
+provides a discovery document that says, "this resource exists, this is its
+kind, and these are the fields clients can expect."
+
+For example, after registering the users resource, `main()` can add a discovery
+definition like this:
 
 ```go
 userCRD := &api.CRDDefinition{
-	Group: "api.example.io", Version: "v1", Kind: "User", Plural: "users",
-	Schema: map[string]interface{}{"properties": map[string]interface{}{
-		"id":        map[string]interface{}{"type": "string"},
-		"name":      map[string]interface{}{"type": "string"},
-		"email":     map[string]interface{}{"type": "string"},
-		"is_active": map[string]interface{}{"type": "boolean"},
-	}},
+	Group:   "api.example.io",
+	Version: "v1",
+	Kind:    "User",
+	Plural:  "users",
+	Schema: map[string]interface{}{
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type": "string",
+			},
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+			"email": map[string]interface{}{
+				"type": "string",
+			},
+			"is_active": map[string]interface{}{
+				"type": "boolean",
+			},
+		},
+	},
 }
+
 _ = server.CRDRegistry().RegisterCRD(userCRD)
 ```
+
+The same pattern can be repeated for `Product` and `Order`. Once registered,
+discovery clients can treat these resources exactly like CRD-created resources:
+they can identify the API group, determine the available versions, inspect the
+schema, and present useful help information without needing special knowledge of
+the server's built-in types.
+
+This is an important architectural step. The server now has two complementary
+registration paths: compiled resources provide behavior, storage, and request
+handling, while discovery definitions provide a common description layer.
+Keeping these responsibilities separate is what allows the API surface to grow
+dynamically while preserving the simplicity of the original framework.
+
 
 ### Checkpoint
 
@@ -4098,9 +4605,9 @@ Clients can now discover groups and versions, not just flat names.
 
 ### Goal
 
-Add a second extension path: compiled Go plugins (`.so`) that register resources when
-dropped into a watched directory — no restart. This uses Go's `plugin` package (Linux
-/ macOS only).
+Add a second extension path: compiled Go plugins (`.so`) that register resources
+when dropped into a watched directory — no restart. This uses Go's `plugin`
+package (Linux / macOS only).
 
 **Figure 12.1 — Plugin loading**
 
@@ -4115,27 +4622,186 @@ flowchart LR
 
 ### The Plugin interface
 
+The plugin system needs a stable contract between the core API server and any
+external extensions that are loaded at runtime. The server should not need to
+know what a plugin provides, which resources it creates, or which types it
+introduces. Instead, it only needs to know that the plugin follows a common
+interface.
+
+The `Plugin` interface defines this contract. A plugin is responsible for
+describing itself, registering the resources and types it contributes, and
+cleaning up those registrations when it is removed. This keeps the plugin
+mechanism independent from the rest of the server architecture: the core
+framework manages loading and lifecycle, while the plugin owns the details of
+the functionality it adds.
+
+The most important method is `Register`. When a plugin is loaded, the plugin
+manager provides access to the server's existing `Registry` and `Scheme`. The
+plugin uses these objects in exactly the same way that built-in resources are
+registered during startup. It can add new resources, associate resource names
+with concrete Go types, and extend the API without requiring any changes to the
+main server code.
+
+This follows the same design principle used throughout the project: the API
+server should depend on abstractions rather than concrete implementations. A
+plugin does not modify routing logic, create custom handlers, or patch the
+server. It simply contributes new resources to the registries that the generic
+API layer already understands.
+
+The `Unregister` method provides the reverse operation. When a plugin is
+unloaded, it removes the resources it previously added. This is important
+because plugins are not permanent additions to the binary; they represent
+optional capabilities that can appear and disappear during the server's
+lifetime. Removing a plugin should leave the server in a clean state, with no
+stale resource registrations pointing to code that is no longer available.
+
+A typical plugin therefore follows a simple lifecycle:
+
+1. The server starts and initializes its registries.
+2. The plugin manager loads a plugin package.
+3. The plugin manager discovers the exported `Plugin` implementation.
+4. The server calls `Register(...)`.
+5. The plugin adds resources and types.
+6. The generic router immediately begins serving the new resources.
+7. If the plugin is removed later, `Unregister(...)` removes its contributions.
+
+The interface intentionally does not expose the `Router`. Plugins do not add
+routes directly because doing so would break the dynamic design. Every resource
+should flow through the same discovery, CRUD, middleware, and authorization
+paths provided by the framework. By limiting plugins to registry and scheme
+operations, newly added capabilities automatically inherit the behavior of the
+existing API server.
+
 **Listing 12.1 — `pkg/plugins/interface.go`**
 
 ```go
 // Package plugins provides a plugin loading system for dynamic API extensibility.
 package plugins
 
-import "github.com/pergus/api-server/pkg/api"
+import (
+	"github.com/pergus/api-server/pkg/api"
+)
 
-// Plugin is implemented by every plugin. Each plugin is a separate Go package that
-// exports a symbol named Plugin of this type.
+// Plugin defines the interface that all plugins must implement.
+//
+// Each plugin is a separate Go package that exports a Plugin symbol.
+// When the plugin loads, the plugin manager calls Register() to add the plugin's
+// resources and types to the API server.
 type Plugin interface {
+	// Name returns the plugin name.
 	Name() string
+
+	// Register adds the plugin's resources to the server.
+	// Called when the plugin is loaded.
+	// The plugin receives the registry and scheme so it can register itself.
 	Register(registry api.Registry, scheme api.Scheme) error
+
+	// Unregister removes the plugin's resources from the server.
+	// Called when the plugin is unloaded.
 	Unregister(registry api.Registry) error
 }
 ```
 
+This interface is deliberately small. A plugin only needs three pieces of
+information: its identity, how to install its functionality, and how to remove
+it. Everything else — HTTP routing, serialization, discovery, storage access,
+and client compatibility — is provided automatically by the framework.
+
+As a result, adding a plugin is equivalent to adding another set of resources to
+the server's existing dynamic ecosystem. The same generic machinery that powers
+built-in resources and CRDs can now also power independently developed
+extensions.
+
+
 ### The loader
 
-The loader opens `.so` files, resolves the `Plugin` symbol, calls `Register`, tracks
-what is loaded, and polls the directory for new files.
+The plugin interface defines what a plugin must provide, but the loader is the
+component that turns that contract into a running system. Its responsibility is
+to discover plugin files, open them, verify that they implement the expected
+interface, activate them, and keep track of their lifecycle.
+
+Go plugins are compiled separately as shared object files (`.so`). Unlike
+statically linked resources, these extensions do not need to be known when the
+API server binary is built. The loader can discover new plugin files after
+startup and integrate them into the running server. This is the mechanism that
+allows the API surface to grow without requiring a restart or a rebuild.
+
+The loader is intentionally separate from the server itself. The server owns the
+registries and the HTTP lifecycle, while the loader only manages extensions that
+contribute to those registries. This separation keeps the core API server
+independent from the plugin implementation details.
+
+The loading process follows a small number of steps:
+
+1. The loader receives the path to a plugin shared object.
+2. It opens the file using Go's `plugin` package.
+3. It looks for an exported symbol named `Plugin`.
+4. It verifies that the symbol implements the `Plugin` interface.
+5. It calls `Register(...)` so the plugin can add its resources and types.
+6. It stores metadata about the loaded plugin for later inspection or removal.
+
+The exported `Plugin` symbol is the bridge between the compiled plugin and the
+server. A plugin package typically exposes a variable containing its
+implementation:
+
+```go
+var Plugin plugins.Plugin = &MyPlugin{}
+```
+
+When the loader calls `Lookup("Plugin")`, it retrieves that value without
+knowing anything about the plugin's internal code. This is the same pattern used
+throughout the framework: behavior is discovered through interfaces rather than
+hard-coded dependencies.
+
+The loader also maintains a record of loaded plugins. The `LoadedPlugin`
+structure stores the plugin instance, its file path, load timestamp, and the
+underlying Go plugin handle. Keeping this information makes it possible to
+expose plugin status through future API endpoints, provide operational
+visibility, and support administrative tooling such as `apictl plugins`.
+
+The registry map is protected by a mutex because plugin operations can occur
+concurrently with normal API activity. For example, a plugin may be loaded while
+requests are being served, so access to the loaded plugin collection must be
+synchronized.
+
+The directory watcher provides a simple runtime discovery mechanism. Instead of
+requiring an administrator to manually call a load operation, the loader
+periodically scans a configured directory for new `.so` files. When it finds a
+file that has not been seen before, it attempts to load it automatically.
+
+The watcher uses polling rather than filesystem notifications because it keeps
+the implementation portable and easy to understand. A production system could
+replace this with platform-specific file watching, but the lifecycle remains the
+same: detect a new extension, validate it, register it, and make it available.
+
+Unloading is intentionally more limited than loading. Go's native plugin system
+does not support unloading shared objects from memory after they have been
+opened. The framework therefore treats unloading as a logical operation: it
+removes the plugin's registered resources from the API registry by calling
+`Unregister(...)`. The code remains loaded inside the process, but the API
+server no longer exposes the plugin's functionality.
+
+This distinction is important when designing plugin systems in Go. Loading a
+plugin is a true runtime extension; unloading is a cleanup operation that
+removes its effects. For many server-side extensions this behavior is
+sufficient, because plugins are usually added for the lifetime of the process.
+
+The resulting lifecycle looks like this:
+
+1. The server starts and creates its registries.
+2. The loader begins watching the plugin directory.
+3. A new `.so` file appears.
+4. The loader opens the plugin and finds the exported symbol.
+5. The plugin registers resources and types.
+6. Discovery immediately exposes the new API surface.
+7. Clients can use the new resources through the existing generic endpoints.
+8. Removing the plugin unregisters those resources.
+
+The important architectural result is that plugins do not create a second API
+mechanism. They participate in the same dynamic resource system used by built-in
+resources and CRDs. A plugin-added resource automatically receives the existing
+routing, CRUD handling, discovery support, and client compatibility because it
+enters the system through the same registries as everything else.
 
 **Listing 12.2 — `pkg/plugins/loader.go`**
 
@@ -4155,6 +4821,14 @@ import (
 )
 
 // Loader manages plugin loading and lifecycle.
+//
+// The Loader:
+// - Watches a directory for new .so files
+// - Loads plugins dynamically
+// - Tracks loaded plugins
+// - Handles plugin unloading
+//
+// This demonstrates runtime extensibility without server restart.
 type Loader struct {
 	pluginDir string
 	registry  api.Registry
@@ -4166,12 +4840,13 @@ type Loader struct {
 
 // LoadedPlugin tracks a loaded plugin.
 type LoadedPlugin struct {
-	Plugin Plugin
-	Path   string
-	Loaded time.Time
-	Handle *plugin.Plugin
+	Plugin  Plugin
+	Path    string
+	Loaded  time.Time
+	Handle  *plugin.Plugin
 }
 
+// NewLoader creates a plugin loader.
 func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Loader {
 	return &Loader{
 		pluginDir: pluginDir,
@@ -4182,32 +4857,50 @@ func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Load
 	}
 }
 
-// LoadPlugin opens a .so, resolves its Plugin symbol, and registers it.
+// LoadPlugin loads a single plugin from a file.
+// Returns error if the plugin is invalid.
 func (l *Loader) LoadPlugin(path string) error {
 	log.Printf("Loading plugin from %s", path)
+
+	// Open the plugin
 	handle, err := plugin.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open plugin: %w", err)
 	}
+
+	// Look for a Plugin symbol
 	pluginSym, err := handle.Lookup("Plugin")
 	if err != nil {
 		return fmt.Errorf("plugin missing Plugin symbol: %w", err)
 	}
+
+	// Assert it's a Plugin
 	p, ok := pluginSym.(Plugin)
 	if !ok {
 		return fmt.Errorf("Plugin symbol is not of type Plugin")
 	}
+
+	// Register the plugin
 	if err := p.Register(l.registry, l.scheme); err != nil {
 		return fmt.Errorf("plugin registration failed: %w", err)
 	}
+
+	// Track the loaded plugin
 	l.mu.Lock()
-	l.loaded[p.Name()] = &LoadedPlugin{Plugin: p, Path: path, Loaded: time.Now(), Handle: handle}
+	l.loaded[p.Name()] = &LoadedPlugin{
+		Plugin: p,
+		Path:   path,
+		Loaded: time.Now(),
+		Handle: handle,
+	}
 	l.mu.Unlock()
+
 	log.Printf("Successfully loaded plugin: %s", p.Name())
 	return nil
 }
 
-// UnloadPlugin removes a plugin's resources.
+// UnloadPlugin unloads a plugin by name.
+// This removes its resources from the registry.
 func (l *Loader) UnloadPlugin(name string) error {
 	l.mu.Lock()
 	loaded, exists := l.loaded[name]
@@ -4217,15 +4910,21 @@ func (l *Loader) UnloadPlugin(name string) error {
 	}
 	delete(l.loaded, name)
 	l.mu.Unlock()
+
+	// Call the plugin's Unregister
 	return loaded.Plugin.Unregister(l.registry)
 }
 
-// Watch polls the plugin directory for new .so files.
+// Watch polls the plugin directory for new plugins.
+// Runs in a goroutine and watches for changes.
+// Call Stop() to stop watching.
 func (l *Loader) Watch(interval time.Duration) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
+
 		lastSeen := make(map[string]bool)
+
 		for {
 			select {
 			case <-l.stopChan:
@@ -4238,34 +4937,63 @@ func (l *Loader) Watch(interval time.Duration) {
 	}()
 }
 
+// scanPlugins looks for new .so files in the plugin directory.
 func (l *Loader) scanPlugins(lastSeen map[string]bool) {
-	if _, err := os.Stat(l.pluginDir); os.IsNotExist(err) {
+	// Check if directory exists
+	_, err := os.Stat(l.pluginDir)
+	if os.IsNotExist(err) {
 		return
 	}
+	if err != nil {
+		log.Printf("Error checking plugin directory: %v", err)
+		return
+	}
+
+	// List files in the directory
 	entries, err := os.ReadDir(l.pluginDir)
 	if err != nil {
 		log.Printf("Error reading plugin directory: %v", err)
 		return
 	}
+
+	currentSeen := make(map[string]bool)
+
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".so" {
+		if entry.IsDir() {
 			continue
 		}
+
+		if filepath.Ext(entry.Name()) != ".so" {
+			continue
+		}
+
 		path := filepath.Join(l.pluginDir, entry.Name())
+		currentSeen[path] = true
+
+		// If we haven't seen this file before, load it
 		if !lastSeen[path] {
 			if err := l.LoadPlugin(path); err != nil {
 				log.Printf("Failed to load plugin %s: %v", path, err)
 			}
-			lastSeen[path] = true
 		}
+	}
+
+	// Update lastSeen
+	for path := range currentSeen {
+		lastSeen[path] = true
 	}
 }
 
-func (l *Loader) Stop() { close(l.stopChan) }
+// Stop stops the plugin watcher.
+func (l *Loader) Stop() {
+	close(l.stopChan)
+}
 
+// ListLoaded returns all loaded plugins.
 func (l *Loader) ListLoaded() []LoadedPlugin {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+
 	plugins := make([]LoadedPlugin, 0, len(l.loaded))
 	for _, p := range l.loaded {
 		plugins = append(plugins, *p)
@@ -4273,17 +5001,28 @@ func (l *Loader) ListLoaded() []LoadedPlugin {
 	return plugins
 }
 
+// LoadedCount returns the number of loaded plugins.
 func (l *Loader) LoadedCount() int {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return len(l.loaded)
 }
+
+
 ```
+
+The loader completes the extension model introduced in previous chapters.
+Resources can now enter the server through three different paths: built-in
+registrations compiled into the application, CRDs created dynamically through
+the API, and external plugins loaded at runtime. All three paths converge on the
+same registry-driven architecture, which is what allows the server to remain
+generic while its capabilities continue to expand.
+
 
 ### An example plugin
 
-A plugin is a `package main` that exports a `Plugin` variable. It defines its own type
-and registers it exactly like a built-in.
+A plugin is a `package main` that exports a `Plugin` variable. It defines its
+own type and registers it exactly like a built-in.
 
 **Listing 12.3 — `plugins/invoices/main.go`**
 

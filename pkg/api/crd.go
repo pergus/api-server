@@ -6,7 +6,8 @@ import (
 )
 
 // CRDDefinition represents a Custom Resource Definition.
-// This is how the API server allows arbitrary new resources to be registered at runtime.
+// This is how the API server allows arbitrary new resources to be registered at
+// runtime.
 type CRDDefinition struct {
 	Group   string                 `json:"group"`
 	Version string                 `json:"version"`
@@ -32,12 +33,12 @@ func (c *CRDDefinition) Validate() error {
 	return nil
 }
 
-// FullName returns the fully qualified name: plural.group
+// FullName returns the fully qualified name: plural.group, e.g. "invoices.example.io".
 func (c *CRDDefinition) FullName() string {
 	return fmt.Sprintf("%s.%s", c.Plural, c.Group)
 }
 
-// APIPath returns the API endpoint path for this CRD.
+// APIPath returns "/apis/{group}/{version}/{plural}" for this CRD.
 // e.g., /apis/example.io/v1/invoices
 func (c *CRDDefinition) APIPath() string {
 	return fmt.Sprintf("/apis/%s/%s/%s", c.Group, c.Version, c.Plural)
