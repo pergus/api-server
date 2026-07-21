@@ -249,6 +249,7 @@ func (c *Client) delete(path string) ([]byte, error) {
 	return c.request("DELETE", path, nil)
 }
 
+// request performs an HTTP request with the given method, path, and body.
 func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 	url := c.baseURL + path
 	var req *http.Request
