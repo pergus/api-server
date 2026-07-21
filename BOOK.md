@@ -5021,8 +5021,91 @@ generic while its capabilities continue to expand.
 
 ### An example plugin
 
-A plugin is a `package main` that exports a `Plugin` variable. It defines its
-own type and registers it exactly like a built-in.
+The plugin system becomes much clearer when looking at a complete example. A
+plugin is not a special type of application and does not need to know about HTTP
+routing, request handling, or discovery internals. It is simply another provider
+of resources and types.
+
+The only requirement is that the plugin is compiled as a Go `package main` and
+exports a variable named `Plugin`. This exported symbol is the entry point
+discovered by the loader. When the loader opens the compiled `.so` file, it
+searches for this exact symbol, verifies that it implements the `plugins.Plugin`
+interface, and then calls its lifecycle methods.
+
+In this example, the plugin adds a new `Invoice` resource. From the server's
+perspective, this resource is indistinguishable from one compiled directly into
+the application. It has a resource name, creates objects, provides storage, and
+registers a type factory. The difference is only where the code came from:
+instead of being imported by `main.go`, it arrived through a dynamically loaded
+extension.
+
+The plugin defines its own resource type:
+
+```go
+type Invoice struct {
+	ID         string  `json:"id"`
+	CustomerID string  `json:"customer_id"`
+	Amount     float64 `json:"amount"`
+	Status     string  `json:"status"`
+}
+```
+
+This type belongs entirely to the plugin. The core API server does not need to
+import it or understand its fields. The generic API layer only interacts with it
+through the `Resource` interface and the registered factory function. This is
+the same abstraction that allows CRDs and built-in resources to share the same
+CRUD handlers.
+
+The `InvoiceResource` wrapper connects the concrete Go type to the framework. It
+provides the resource name (`invoices`), creates empty objects when requests
+need a new instance, and supplies the storage backend. In this example, the
+plugin uses the same in-memory storage implementation used by the built-in
+resources.
+
+The plugin's `Register` method performs the integration step. When the loader
+activates the plugin, it gives the plugin access to the server's `Registry` and
+`Scheme`. The plugin then performs the same registration operations that
+normally happen during server startup:
+
+1. Register the resource so `/api/invoices` becomes available.
+2. Register the type factory so the generic handlers can create `Invoice` objects.
+3. Return success so the loader can record that the plugin is active.
+
+After registration completes, no router changes are required. The existing
+generic routes automatically discover the new resource through the registry. A
+client can immediately run commands such as:
+
+```bash
+apictl api-resources
+apictl get invoices
+apictl create -f invoice.json
+```
+
+The plugin does not add endpoints manually. Instead, it contributes data and
+behavior to the dynamic resource system that already exists.
+
+The `Unregister` method provides the cleanup path. When the plugin is removed,
+it removes the invoice resource from the registry. Because routing and discovery
+are registry-driven, the API surface updates automatically and clients will no
+longer see `invoices` as an available resource.
+
+The final variable is the most important part of the plugin:
+
+```go
+var Plugin plugins.Plugin = &InvoicePlugin{
+	resource: NewInvoiceResource(),
+}
+```
+
+The name `Plugin` is not arbitrary. It is the well-known symbol that the loader
+searches for with `Lookup("Plugin")`. Without this exported variable, the loader
+can open the shared object but has no way to discover the plugin implementation.
+
+This design keeps plugins small and predictable. A plugin author does not need
+to understand the internals of the API server. They only need to implement the
+resource abstraction and the plugin lifecycle. Once loaded, their resource
+automatically receives the same discovery, CRUD handling, middleware, and client
+support as every other resource in the system.
 
 **Listing 12.3 — `plugins/invoices/main.go`**
 
@@ -5036,6 +5119,7 @@ import (
 	"github.com/pergus/api-server/pkg/plugins"
 )
 
+// Invoice is the resource type defined by this plugin.
 type Invoice struct {
 	ID         string  `json:"id"`
 	CustomerID string  `json:"customer_id"`
@@ -5043,55 +5127,152 @@ type Invoice struct {
 	Status     string  `json:"status"`
 }
 
-type InvoiceResource struct{ storage api.Storage }
-
-func NewInvoiceResource() *InvoiceResource {
-	return &InvoiceResource{storage: api.NewMemoryStorage()}
+// InvoiceResource implements api.Resource.
+type InvoiceResource struct {
+	storage api.Storage
 }
-func (r *InvoiceResource) Name() string        { return "invoices" }
-func (r *InvoiceResource) NewObject() any       { return &Invoice{} }
-func (r *InvoiceResource) Storage() api.Storage { return r.storage }
 
-type InvoicePlugin struct{ resource *InvoiceResource }
+// NewInvoiceResource creates a new invoice resource.
+func NewInvoiceResource() *InvoiceResource {
+	return &InvoiceResource{
+		storage: api.NewMemoryStorage(),
+	}
+}
 
-func (p *InvoicePlugin) Name() string { return "invoices" }
+// Name returns "invoices".
+func (r *InvoiceResource) Name() string {
+	return "invoices"
+}
 
+// NewObject returns an empty Invoice.
+func (r *InvoiceResource) NewObject() any {
+	return &Invoice{}
+}
+
+// Storage returns the storage implementation.
+func (r *InvoiceResource) Storage() api.Storage {
+	return r.storage
+}
+
+// InvoicePlugin implements the plugins.Plugin interface.
+type InvoicePlugin struct {
+	resource *InvoiceResource
+}
+
+// Name returns the plugin name.
+func (p *InvoicePlugin) Name() string {
+	return "invoices"
+}
+
+// Register adds the invoice resource to the server.
 func (p *InvoicePlugin) Register(registry api.Registry, scheme api.Scheme) error {
 	log.Println("[InvoicePlugin] Registering invoice resource and type")
+
+	// Register the resource
 	if err := registry.Register(p.resource); err != nil {
 		return err
 	}
+
+	// Register the type factory
 	if err := scheme.Register("invoices", func() any { return &Invoice{} }); err != nil {
 		return err
 	}
+
+	log.Println("[InvoicePlugin] Successfully registered invoices")
 	return nil
 }
 
+// Unregister removes the invoice resource from the server.
 func (p *InvoicePlugin) Unregister(registry api.Registry) error {
+	log.Println("[InvoicePlugin] Unregistering invoice resource")
 	return registry.Unregister("invoices")
 }
 
-// Plugin is the exported symbol the loader looks for.
-var Plugin plugins.Plugin = &InvoicePlugin{resource: NewInvoiceResource()}
+// Plugin is the symbol that the plugin loader looks for.
+// It must be exported and of type plugins.Plugin.
+var Plugin plugins.Plugin = &InvoicePlugin{
+	resource: NewInvoiceResource(),
+}
+
 ```
+
+This example demonstrates the final goal of the architecture: the API server no
+longer has a fixed list of resources. Resources can come from the application
+itself, from user-defined CRDs, or from separately compiled plugins. The
+framework provides the common machinery, while extensions provide only the
+pieces that are unique to them. 
 
 **Listing 12.4 — `plugins/build.sh`**
 
 ```bash
 #!/bin/bash
+
+# Build script for plugins
+# This builds all plugins in the plugins/ directory as .so files
+
 set -e
+
 echo "Building plugins..."
+
+# Build invoices plugin
+echo "Building invoices plugin..."
 go build -buildmode=plugin -o invoices/invoices.so ./invoices/main.go
-echo "Done. Copy invoices/invoices.so into the server's plugins/ directory."
+
+echo "All plugins built successfully!"
+echo ""
+echo "To use plugins:"
+echo "1. Copy .so files to the plugins/ directory while the server is running"
+echo "2. The server will automatically load them"
+echo ""
+echo "Example:"
+echo "  cp invoices/invoices.so ../plugins/"
 ```
 
-### Wiring the loader into main()
 
-Add plugin startup to `cmd/api-server/main.go`, after registering built-ins and
-before starting the server:
+### Wiring the loader into `main()`
+
+The plugin loader is a separate subsystem, so the server entrypoint is
+responsible for creating it and connecting it to the existing API registries.
+This is the point where the dynamic extension system becomes part of the running
+application.
+
+The loader needs two things from the server:
+
+* The `Registry`, where plugins register their resources.
+* The `Scheme`, where plugins register their object factories.
+
+By passing these dependencies into the loader, plugins do not need direct access
+to the `Server` object itself. They receive only the interfaces required to
+extend the API. This keeps the plugin boundary clean and prevents extensions
+from depending on server internals.
+
+The loader should be initialized after the built-in resources have been
+registered. This ordering is important because it gives the application a
+predictable startup sequence:
+
+1. Create the server.
+2. Register built-in resources and types.
+3. Create the plugin loader.
+4. Load any plugins that already exist on disk.
+5. Begin watching for newly added plugins.
+6. Start serving HTTP requests.
+
+Existing plugins are loaded immediately during startup so that the API is fully
+populated before clients begin discovering resources. For example, if an invoice
+plugin already exists in the plugins directory, the first `/api` discovery
+request should include `invoices` rather than requiring an administrator to wait
+for the polling interval.
+
+The loader then begins watching the directory for changes. The watcher
+periodically scans for new `.so` files and loads them automatically. This means
+an administrator can add a new extension while the server is running, and the
+new resources will become available without restarting the process.
+
+The startup code is added after built-in registration and before
+`server.Start()`:
+
 
 **Listing 12.5 — `cmd/api-server/main.go` (plugin additions)**
-
 ```go
 	// Create the plugin loader watching ./plugins for .so files.
 	log.Println("Starting plugin system...")
@@ -5112,8 +5293,50 @@ before starting the server:
 	loader.Watch(2 * time.Second)
 ```
 
-And call `loader.Stop()` during shutdown. Remember to import
-`github.com/pergus/api-server/pkg/plugins`.
+The initial directory scan and the background watcher serve different purposes.
+The scan handles plugins that were already installed before the server started.
+The watcher handles plugins added later while the server is running. Together
+they provide both startup discovery and runtime extensibility. 
+
+The loader also has a lifecycle of its own, so it should be stopped when the
+server shuts down. During graceful shutdown, call:
+
+```go
+loader.Stop()
+```
+
+before the process exits. This closes the watcher's stop channel and allows the
+background goroutine to terminate cleanly.
+
+The final `main()` lifecycle now looks like this:
+
+1. Initialize the server.
+2. Register built-in resources.
+3. Initialize the plugin system.
+4. Load installed plugins.
+5. Watch for new plugins.
+6. Start the HTTP server.
+7. Wait for a shutdown signal.
+8. Stop the plugin watcher.
+9. Gracefully shut down the HTTP server.
+
+This keeps the plugin system aligned with the rest of the application lifecycle.
+Plugins are not a separate service or a special execution path; they are another
+source of resources that participate in the same registry-driven API model.
+
+Remember to add the plugin package import:
+
+```go
+import (
+	"github.com/pergus/api-server/pkg/plugins"
+)
+```
+
+After this change, dropping a compiled plugin into `./plugins` is enough to
+extend the running API server. No route changes, client updates, or server
+rebuilds are required. The discovery system introduced in earlier chapters will
+automatically expose the new resource once the plugin registers it.
+
 
 ### Checkpoint
 
