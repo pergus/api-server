@@ -6050,7 +6050,7 @@ controller, another service, or something added in the future.
 
 The router is also updated to hold a reference to the event bus:
 
-**Listing 13.6 — `pkg/api/router.go`**
+**Listing 13.7 — `pkg/api/router.go`**
 
 ```go
 // Router is the HTTP request dispatcher.
@@ -6089,7 +6089,7 @@ type Router struct {
 
 The constructor now accepts the event bus:
 
-**Listing 13.7 — `pkg/api/router.go`**
+**Listing 13.8 — `pkg/api/router.go`**
 
 ```go
 // NewRouter creates a new router.
@@ -7302,7 +7302,7 @@ place where clients store and retrieve objects. It can now observe changes,
 apply business rules, and continuously drive resources toward their desired
 state.
 
-**Listing 15.3 — `pkg/controllers/orders.go`**
+**Listing 15.2 — `pkg/controllers/orders.go`**
 
 ```go
 package controllers
@@ -7553,7 +7553,7 @@ controller-driven architecture:
 The API server can now do more than store and retrieve objects. It can observe
 changes, execute automated reactions, and continuously maintain resource state. 
 
-**Listing 15.4 — `cmd/api-server/main.go` (controller additions)**
+**Listing 15.3 — `cmd/api-server/main.go` (controller additions)**
 
 ```go
 	// Initialize the controller manager and register controllers
@@ -8185,8 +8185,8 @@ Every file you wrote, and the chapter that introduced it.
 | `pkg/controllers/controller.go` | 15 | `Controller` interface |
 | `pkg/controllers/manager.go` | 15 | Controller manager + base controller |
 | `pkg/controllers/orders.go` | 15 | Example order controller |
-| `cmd/api-server/main.go` | 7, 12, 15 | Server entrypoint |
-| `cmd/apictl/main.go` | 8 | CLI dispatcher |
+| `cmd/api-server/main.go` | 7, 11, 12, 15 | Server entrypoint |
+| `cmd/apictl/main.go` | 8, 9, 14 | CLI dispatcher |
 | `cmd/apictl/client.go` | 8, 14 | HTTP + SSE client library |
 | `cmd/apictl/commands.go` | 9, 14 | CLI command implementations |
 | `plugins/invoices/main.go` | 12 | Example plugin |
