@@ -3471,15 +3471,10 @@ func formatValue(value interface{}) string {
 }
 ```
 
-`cmdWatch` is added in Chapter 14 (it needs the streaming client). For now, add
-a temporary stub so the file compiles:
-
-```go
-func cmdWatch(c *Client, args []string) {
-	fmt.Fprintln(os.Stderr, "watch not implemented yet")
-	os.Exit(1)
-}
-```
+The implementation in the repository now includes a real `cmdWatch` command
+that calls the client-side watch stream and prints incoming SSE events. The
+book's later chapter on watch streaming shows the full behavior, so this
+chapter can simply present it as part of the completed CLI surface.
 
 ### Checkpoint
 
@@ -3650,6 +3645,9 @@ The `SimpleCRDRegistry` implementation uses two maps internally. The first map
 stores CRDs by their full name, which provides direct access when a complete
 identifier is available. The second map indexes CRDs by plural name, allowing
 the router to quickly determine whether a request refers to a custom resource.
+In the current implementation, the list operation simply returns the registered
+entries that are currently present in the registry; it does not guarantee a
+particular ordering.
 
 Because CRDs can be added and removed while requests are being processed, the
 registry must be safe for concurrent access. The implementation uses a
@@ -3795,7 +3793,7 @@ func (r *SimpleCRDRegistry) GetCRD(fullName string) (*CRDDefinition, bool) {
 	return crd, exists
 }
 
-// ListCRDs returns all registered CRDs in sorted order.
+// ListCRDs returns all registered CRDs.
 func (r *SimpleCRDRegistry) ListCRDs() []*CRDDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -4086,6 +4084,7 @@ endpoints; `createCRD` performs the three-way registration.
 func (r *Router) routeCRD(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 	if path == "/crds" || path == "/crds/" {
+		// /crds - list or create		
 		switch req.Method {
 		case http.MethodGet:
 			r.listCRDs(w, req)
@@ -4095,6 +4094,7 @@ func (r *Router) routeCRD(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	} else if strings.HasPrefix(path, "/crds/") {
+		// /crds/{name} - delete
 		switch req.Method {
 		case http.MethodDelete:
 			r.deleteCRD(w, req)
@@ -4106,8 +4106,7 @@ func (r *Router) routeCRD(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// createCRD registers the CRD, a dynamic resource, and a scheme factory — atomically
-// rolling back if any step fails.
+// createCRD handles POST /crds
 func (r *Router) createCRD(w http.ResponseWriter, req *http.Request) {
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
@@ -4117,18 +4116,25 @@ func (r *Router) createCRD(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	// Register the CRD
 	if err := r.crdRegistry.RegisterCRD(&crd); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	// Create a dynamic resource for this CRD
 	resource := NewDynamicResource(&crd)
+
+	// Register the resource in the main registry
 	if err := r.registry.Register(resource); err != nil {
+		// Unregister the CRD if resource registration fails
 		r.crdRegistry.UnregisterCRD(crd.FullName())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	// Register the object factory in the scheme
 	plural := crd.Plural
 	if err := r.scheme.Register(plural, func() any {
 		return &DynamicObject{
@@ -4138,6 +4144,7 @@ func (r *Router) createCRD(w http.ResponseWriter, req *http.Request) {
 			Spec:       make(map[string]interface{}),
 		}
 	}); err != nil {
+		// Unregister on failure
 		r.registry.Unregister(plural)
 		r.crdRegistry.UnregisterCRD(crd.FullName())
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -4145,63 +4152,98 @@ func (r *Router) createCRD(w http.ResponseWriter, req *http.Request) {
 	}
 
 	log.Printf("CRD registered: %s", crd.FullName())
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+
+	response := map[string]interface{}{
 		"message": fmt.Sprintf("CRD %s registered", crd.FullName()),
 		"name":    crd.FullName(),
 		"path":    crd.APIPath(),
-	})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
 }
 
-// listCRDs handles GET /crds.
+// listCRDs handles GET /crds
 func (r *Router) listCRDs(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	crds := r.crdRegistry.ListCRDs()
 	crdList := make([]map[string]interface{}, 0, len(crds))
+
 	for _, crd := range crds {
 		crdList = append(crdList, map[string]interface{}{
-			"name": crd.FullName(), "group": crd.Group, "version": crd.Version,
-			"kind": crd.Kind, "plural": crd.Plural, "schema": crd.Schema,
+			"name":    crd.FullName(),
+			"group":   crd.Group,
+			"version": crd.Version,
+			"kind":    crd.Kind,
+			"plural":  crd.Plural,
+			"schema":  crd.Schema,
 		})
 	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"items": crdList, "count": len(crdList)})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items": crdList,
+		"count": len(crdList),
+	})
 }
 
-// deleteCRD handles DELETE /crds/{name} and cleans up all three registrations.
+// deleteCRD handles DELETE /crds/{name}
 func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	crdName := strings.TrimPrefix(req.URL.Path, "/crds/")
-	if crdName == "" {
+
+	path := strings.TrimPrefix(req.URL.Path, "/crds/")
+	if path == "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+
+	crdName := path
+
+	// Get the CRD to find the plural name
 	crd, exists := r.crdRegistry.GetCRD(crdName)
 	if !exists {
 		http.Error(w, fmt.Sprintf("CRD %q not found", crdName), http.StatusNotFound)
 		return
 	}
+
 	plural := crd.Plural
+
+	// Unregister from all three places to ensure complete cleanup
+
+	// 1. Unregister the resource from Resource Registry
 	if err := r.registry.Unregister(plural); err != nil {
+		// Log but don't fail - resource might not exist in registry
 		log.Printf("Warning: could not unregister resource %q: %v", plural, err)
 	}
+
+	// 2. Unregister the type factory from Scheme
 	if err := r.scheme.Unregister(plural); err != nil {
+		// Log but don't fail - type might not exist in scheme
 		log.Printf("Warning: could not unregister type %q: %v", plural, err)
 	}
+
+	// 3. Unregister the CRD from CRD Registry
 	if err := r.crdRegistry.UnregisterCRD(crdName); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	log.Printf("CRD unregistered: %s", crdName)
+
+	response := map[string]interface{}{
+		"message": fmt.Sprintf("CRD %s deleted", crdName),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"message": fmt.Sprintf("CRD %s deleted", crdName)})
+	json.NewEncoder(w).Encode(response)
 }
 ```
 
@@ -4253,10 +4295,13 @@ The schema is intentionally simple in this example, but it demonstrates the core
 idea: the server can understand the shape of a resource without having a
 compiled Go type.
 
-The `customer`, `amount`, and `status` fields describe the business data stored
-inside the invoice. The schema can provide additional metadata such as field
-descriptions, which can later be used by tools such as the CLI `explain` command
-to help users understand available fields.
+The repository example in `examples/invoice-crd.yaml` also includes a `date`
+field and a small enum for `status`, which matches the checked-in sample data
+and makes the example closer to the implementation used in the project.
+The `customer`, `amount`, `date`, and `status` fields describe the business data
+stored inside the invoice. The schema can provide additional metadata such as
+field descriptions, which can later be used by tools such as the CLI `explain`
+command to help users understand available fields.
 
 After the CRD has been registered, clients can create objects of this new type.
 The sample invoice object demonstrates how a dynamically created resource looks
@@ -4307,8 +4352,17 @@ spec:
       amount:
         type: number
         description: Invoice amount in USD
+      date:
+        type: string
+        description: Invoice date (ISO 8601 format)
       status:
         type: string
+        enum:
+          - draft
+          - sent
+          - paid
+          - overdue
+        description: Current invoice status
 ```
 
 And a sample object:
@@ -4399,7 +4453,9 @@ endpoints are read-only, so other HTTP methods are rejected.
 It then collects group names from two sources. Built-in resources are placed
 into the default `api.example.io` group, while dynamically created resources
 contribute their own groups from their CRD definitions. A map is used while
-collecting groups so duplicate entries are automatically removed.
+collecting groups so duplicate entries are automatically removed. In the current
+implementation, the built-in resources are represented by the default group and
+CRDs add any additional groups from the registry.
 
 For example, a server containing the built-in users resource and an invoice CRD
 might return groups such as:
@@ -4793,6 +4849,8 @@ structure stores the plugin instance, its file path, load timestamp, and the
 underlying Go plugin handle. Keeping this information makes it possible to
 expose plugin status through future API endpoints, provide operational
 visibility, and support administrative tooling such as `apictl plugins`.
+The repository implementation currently exposes this state through the loader's
+`ListLoaded()` and `LoadedCount()` helpers.
 
 The registry map is protected by a mutex because plugin operations can occur
 concurrently with normal API activity. For example, a plugin may be loaded while
@@ -5431,20 +5489,18 @@ intermediary that distributes those notifications to any interested consumers.
 
 The flow looks like this:
 
-```
-HTTP POST /api/{resource}
-          |
-          v
-   Storage.Create()
-          |
-          v
- EventBus.Publish(Event{Type: Added, ...})
-          |
-          +----------------+
-          |                |
-          v                v
-   Watch clients     Controllers
-   (streaming)       (reconciliation)
+```mermaid
+sequenceDiagram
+    participant H as HTTP POST /api/{resource}
+    participant S as Storage.Create()
+    participant EB as EventBus.Publish(Event{Type: Added, ...})
+    participant W as Watch clients<br/>(streaming)
+    participant C as Controllers<br/>(reconciliation)
+
+    H->>S: Create resource
+    S->>EB: Publish ADDED event
+    EB->>W: Stream event
+    EB->>C: Deliver event
 ```
 
 This keeps the API layer loosely coupled. A create request does not need to know
@@ -6162,26 +6218,14 @@ that temporarily falls behind does not delay API writes.
 
 The overall flow is therefore:
 
-```
-HTTP request
-     |
-     v
-Storage mutation
-     |
-     v
-Publish(event)
-     |
-     v
-Buffered event queue
-     |
-     v
-Background publish loop
-     |
-     v
-Independent fan-out
-     |
-     v
-Subscriber buffers
+```mermaid
+flowchart TD
+    A[HTTP request] --> B[Storage mutation]
+    B --> C[Publish event]
+    C --> D[Buffered event queue]
+    D --> E[Background publish loop]
+    E --> F[Independent fan-out]
+    F --> G[Subscriber buffers]
 ```
 
 This architecture intentionally separates the synchronous path from the
@@ -6354,23 +6398,12 @@ the watch loop and triggers the deferred unsubscribe operation.
 
 The complete flow is therefore:
 
-```
-Client
-  |
-  | GET /api/orders?watch=true
-  v
-Watch handler
-  |
-  | Subscribe("orders")
-  v
-Event bus
-  |
-  | Event{ADDED, MODIFIED, DELETED}
-  v
-SSE stream
-  |
-  v
-Client receives updates
+```mermaid
+flowchart TD
+    Client["Client"] -->|"GET /api/orders?watch=true"| Handler["Watch handler"]
+    Handler -->|"Subscribe(''orders'')"| Bus["Event bus"]
+    Bus -->|"Event: {ADDED MODIFIED DELETED}"| SSE["SSE stream"]
+    SSE --> Updates["Client receives updates"]
 ```
 
 The important architectural point is that the Watch API does not poll storage. A
@@ -6544,22 +6577,13 @@ instead of freezing the watch connection.
 
 The overall client-side flow is:
 
-```text
-HTTP response stream
-        |
-        v
-bufio.Reader
-        |
-        v
-SSE line parser
-        |
-        +----------------+
-        |                |
-        v                v
-Events channel      Errors channel
-        |
-        v
-Application logic
+```mermaid
+flowchart TD
+    A["HTTP response stream"] --> B["bufio.Reader"]
+    B --> C["SSE line parser"]
+    C --> D["Events channel"]
+    C --> E["Errors channel"]
+    D --> F["Application logic"]
 ```
 
 This keeps the SSE implementation isolated inside the client library. Command
@@ -6570,20 +6594,12 @@ changes.
 
 With this addition, the framework now supports the complete event path:
 
-```text
-Resource change
-      |
-      v
-Storage
-      |
-      v
-EventBus
-      |
-      v
-Watch API (SSE)
-      |
-      v
-apictl / external clients
+```mermaid
+flowchart TD
+    A["Resource change"] --> B["Storage"]
+    B --> C["EventBus"]
+    C --> D["Watch API (SSE)"]
+    D --> E["apictl / external clients"]
 ```
 
 The server can now notify clients in real time, and clients can consume those
@@ -6773,20 +6789,12 @@ through the same event path.
 
 This completes the event pipeline introduced in this chapter:
 
-```
-Resource change
-      |
-      v
-MemoryStorage
-      |
-      v
-EventBus.Publish()
-      |
-      v
-Watch API (SSE stream)
-      |
-      v
-apictl watch
+```mermaid
+flowchart TD
+    A["Resource change"] --> B["MemoryStorage"]
+    B --> C["EventBus.Publish()"]
+    C --> D["Watch API (SSE stream)"]
+    D --> E["apictl watch"]
 ```
 
 The result is a fully event-driven client experience. Instead of repeatedly
@@ -6933,23 +6941,13 @@ the event.
 This checkpoint demonstrates the complete path from a user action to a live
 notification:
 
-```text
-apictl create
-      |
-      v
-HTTP API handler
-      |
-      v
-Resource storage
-      |
-      v
-EventBus.Publish(ADDED)
-      |
-      v
-Watch subscription
-      |
-      v
-apictl watch
+```mermaid
+flowchart TD
+    A["apictl create"] --> B["HTTP API handler"]
+    B --> C["Resource storage"]
+    C --> D["EventBus.Publish(ADDED)"]
+    D --> E["Watch subscription"]
+    E --> F["apictl watch"]
 ```
 
 With this in place, the API server has moved beyond request/response behavior
@@ -6979,30 +6977,18 @@ happen after those changes occur.
 
 For example, an order workflow might look like this:
 
-```text
-Client creates Order
-        |
-        v
-API handler stores object
-        |
-        v
-EventBus publishes ADDED event
-        |
-        v
-OrderController receives event
-        |
-        v
-Controller calculates totals and updates status
-        |
-        v
-Storage.Update()
-        |
-        v
-EventBus publishes MODIFIED event
-        |
-        v
-Watch clients see updated order
+
+```mermaid
+flowchart TD
+    A["Client creates Order"] --> B["API handler stores object"]
+    B --> C["EventBus publishes ADDED event"]
+    C --> D["OrderController receives event"]
+    D --> E["Controller calculates totals and updates status"]
+    E --> F["Storage.Update()"]
+    F --> G["EventBus publishes MODIFIED event"]
+    G --> H["Watch clients see updated order"]
 ```
+
 
 The important design property is that controllers do not bypass the normal API
 machinery. When a controller changes a resource, it uses the same storage
@@ -7188,23 +7174,14 @@ creates the corresponding `MODIFIED` event.
 
 The controller therefore participates in the same lifecycle as any other client:
 
-```text
-Order created
-      |
-      v
-ADDED event
-      |
-      v
-OrderController reconciles
-      |
-      v
-Storage.Update()
-      |
-      v
-MODIFIED event
-      |
-      v
-Watch clients receive update
+
+```mermaid
+flowchart TD
+    A["Order created"] --> B["ADDED event"]
+    B --> C["OrderController reconciles"]
+    C --> D["Storage.Update()"]
+    D --> E["MODIFIED event"]
+    E --> F["Watch clients receive update"]
 ```
 
 The implementation uses a generic `map[string]interface{}` representation rather
@@ -7258,20 +7235,14 @@ This is also an important design consideration. A controller that updates every
 `MODIFIED` event without checking whether an update is actually required can
 create an endless loop:
 
-```text
-MODIFIED event
-      |
-      v
-Controller updates object
-      |
-      v
-Another MODIFIED event
-      |
-      v
-Controller updates object again
-      |
-      v
-(repeats forever)
+
+```mermaid
+flowchart TD
+    A["MODIFIED event"] --> B["Controller updates object"]
+    B --> C["Another MODIFIED event"]
+    C --> D["Controller updates object again"]
+    D --> E["Repeats forever"]
+    E -.-> A
 ```
 
 Controllers must therefore be written with idempotency in mind. A reconciliation
@@ -7472,6 +7443,8 @@ starting each controller independently in `main()`, the server registers
 controllers with the manager and allows it to handle startup, event
 subscriptions, and shutdown behavior. This keeps the entrypoint focused on
 assembling the application rather than managing individual background workers.
+The current implementation uses `controllers.New(server.EventBus())` and then
+registers the order controller before launching the manager in a goroutine.
 
 The controller manager requires access to the server's event bus because
 controllers are event consumers. They do not poll resources looking for changes.
@@ -7483,20 +7456,12 @@ to locate the `orders` resource and perform reconciliation updates. When the
 controller changes an order through storage, the normal resource lifecycle
 continues:
 
-```text
-OrderController
-        |
-        v
-Registry.Lookup("orders")
-        |
-        v
-Storage.Update()
-        |
-        v
-EventBus.Publish(MODIFIED)
-        |
-        v
-Watch clients and other controllers
+```mermaid
+flowchart TD
+    A["OrderController"] --> B["Registry.Lookup(''orders'')"]
+    B --> C["Storage.Update()"]
+    C --> D["EventBus.Publish(MODIFIED)"]
+    D --> E["Watch clients and other controllers"]
 ```
 
 This preserves the framework's central design rule: all resource changes flow
@@ -7523,31 +7488,17 @@ exiting.
 After this change, the server contains all of the major pieces of a
 controller-driven architecture:
 
-```text
-                 +----------------+
-                 |  HTTP Request  |
-                 +-------+--------+
-                         |
-                         v
-                 +---------------+
-                 |    Storage    |
-                 +-------+-------+
-                         |
-                         v
-                 +---------------+
-                 |   Event Bus   |
-                 +-------+-------+
-                         |
-              +----------+----------+
-              |                     |
-              v                     v
-       Watch clients        Controllers
-                                   |
-                                   v
-                              Reconcile
-                                   |
-                                   v
-                              Storage Update
+```mermaid
+flowchart TD
+    A["HTTP Request"] --> B["Storage"]
+    B --> C["Event Bus"]
+
+    C --> D["Watch clients"]
+    C --> E["Controllers"]
+
+    E --> F["Reconcile"]
+    F --> G["Storage Update"]
+    G --> B
 ```
 
 The API server can now do more than store and retrieve objects. It can observe
