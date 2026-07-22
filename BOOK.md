@@ -4696,24 +4696,56 @@ The dynamic type slots seamlessly into all the generic machinery.
 
 ### CRD routes
 
-The next step is to connect CRD support to the HTTP layer. Earlier chapters
-introduced the router structure but intentionally deferred the CRD-specific
-routes until the underlying registry and resource implementation were available.
-Now that those pieces exist, the router can expose endpoints for creating,
-listing, and deleting CRDs.
+The CRD registry is now available to the router, but the router must first be
+updated to store a reference to it. Earlier chapters intentionally kept the
+router focused on built-in resources, leaving CRD support disabled until the
+supporting infrastructure was complete.
 
-The `routeCRD` method handles requests under the `/crds` path and dispatches them to
-the appropriate operation based on the HTTP method and request path. The
-`createCRD` method performs the registration workflow: it validates the submitted
-definition, stores it in the CRD registry, creates a dynamic resource backed by
-the new definition, and makes that resource available through the API server.
+The crdRegistry field allows the router to coordinate dynamic resource
+registration. When a client submits a new CRD, the router uses this registry to
+store the definition and later retrieve or remove it. The event bus remains
+disabled because event publishing is introduced in a later chapter and is not
+required for CRD registration.
 
-This three-step process is what allows a new resource type to become available
-at runtime. Once registration succeeds, the server can treat the dynamically
-created resource in the same way as built-in resources, using the existing
-generic handlers and storage interfaces.
+**Listing 10.3 — `pkg/api/router.go` (CRD registry integration)**
+```go
+type Router struct {
+	registry Registry
+	scheme   Scheme
+	crdRegistry CRDRegistry
+	//eventBus    EventBus    (Added in Chapter 13)
+	mux *http.ServeMux
+}
 
-**Listing 10.3 — `pkg/api/router.go` (CRD handlers)**
+// NewRouter creates a new router.
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, /* eventBus EventBus */) *Router {
+	return &Router{
+		registry: registry,
+		scheme:   scheme,
+		crdRegistry: crdRegistry,
+		//eventBus:    eventBus,    (Added in Chapter 13)
+		mux: http.NewServeMux(),
+	}
+}
+
+```
+
+With the router connected to the CRD registry, the next step is to add the HTTP
+handlers that expose CRD operations. The routeCRD method provides the entry
+point for all requests under /crds and dispatches each request based on its HTTP
+method.
+
+The createCRD handler performs the complete registration workflow. It validates
+the submitted definition, adds it to the CRD registry, creates a dynamic
+resource from the definition, registers that resource with the main resource
+registry, and adds the corresponding object factory to the scheme.
+
+This sequence ensures that a newly registered resource is available through the
+same generic API infrastructure as built-in resources. If any step fails,
+previously completed registration steps are rolled back so the server does not
+remain in a partially configured state.
+
+**Listing 10.4 — `pkg/api/router.go` (CRD handlers)**
 
 ```go
 // -----------------------------------------------------------------------------
