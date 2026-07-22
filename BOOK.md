@@ -2147,6 +2147,7 @@ be registered and served.
 **Listing 6.2 — `pkg/api/server.go`**
 
 ```go
+// pkg/api/server.go
 package api
 
 import (
@@ -2164,6 +2165,8 @@ type Server struct {
 	router      *Router
 	httpServer  *http.Server
 	port        int
+	//crdRegistry CRDRegistry (Added in Chapter 10)
+	//eventBus    EventBus    (Added in Chapter 13)
 }
 
 // Config holds server configuration.
@@ -2175,12 +2178,16 @@ type Config struct {
 func NewServer(cfg Config) *Server {
 	registry := NewRegistry()
 	scheme := NewScheme()
-	router := NewRouter(registry, scheme)
+	//crdRegistry := NewCRDRegistry() (Added in Chapter 13)
+	//eventBus := NewEventBus()       (Added in Chapter 10)
+	router := NewRouter(registry, scheme /*, crdRegistry, eventBus */)
 
 	return &Server{
 		registry:    registry,
 		scheme:      scheme,
 		router:      router,
+		// crdRegistry: crdRegistry, (Added in Chapter 10)
+		// eventBus:    eventBus,    (Added in Chapter 13)
 		port:        cfg.Port,
 	}
 }
@@ -2196,6 +2203,22 @@ func (s *Server) Registry() Registry {
 func (s *Server) Scheme() Scheme {
 	return s.scheme
 }
+
+// CRDRegistry returns the CRD registry.
+// Called to manage Custom Resource Definitions.
+/* Added in Chapter 13
+func (s *Server) CRDRegistry() CRDRegistry {
+	return s.crdRegistry
+}
+*/
+
+// EventBus returns the event bus.
+// Called by controllers and watch endpoints to subscribe to events.
+/* Addded in Chapter 10
+func (s *Server) EventBus() EventBus {
+	return s.eventBus
+}
+*/
 
 // Start begins listening.
 // The router is set up here.
@@ -2248,7 +2271,13 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // RegisterResource registers a resource at runtime.
 // This makes the resource immediately available without restarting the server.
+// Also attaches the event bus to the resource's storage so events are published.
 func (s *Server) RegisterResource(resource Resource) error {
+	// Attach event bus to storage if storage is MemoryStorage
+	if ms, ok := resource.Storage().(*MemoryStorage); ok {
+		ms.SetEventBus(s.eventBus, resource.Name())
+	}
+
 	err := s.registry.Register(resource)
 	if err == nil {
 		log.Printf("Registered resource: %s", resource.Name())
