@@ -5205,7 +5205,7 @@ The result is a server that can grow beyond the resources included in its
 original source code. New concepts can be introduced through data alone, while
 the existing API infrastructure continues to handle them automatically.
 
-**Listing 10.7 — `examples/invoice-crd.yaml`**
+**Example 10.1 — `examples/invoice-crd.yaml`**
 
 ```yaml
 apiVersion: api.example.io/v1
@@ -5243,7 +5243,7 @@ spec:
 
 And a sample object:
 
-**Listing 10.8 — `examples/invoice-1.json`**
+**Example 10.2 — `examples/invoice-1.json`**
 
 ```json
 {
