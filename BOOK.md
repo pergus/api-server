@@ -369,21 +369,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // Storage defines the persistence interface for all resources.
 //
-// By depending on this interface rather than a concrete backend, the framework
-// is agnostic to HOW data is stored: memory, SQL, NoSQL, cloud, etc.
+// By depending on this interface rather than a concrete storage backend,
+// the framework is agnostic to HOW data is stored. Implementations can be:
+// - In-memory (provided here)
+// - SQL databases (PostgreSQL, MySQL, etc.)
+// - NoSQL databases (MongoDB, DynamoDB, etc.)
+// - Cloud storage (S3, Google Cloud Storage, etc.)
+// - Distributed systems (etcd, Consul, etc.)
+//
+// This is identical to how the API server abstracts storage behind StorageInterface.
 type Storage interface {
 	// List returns all stored objects.
 	List() ([]any, error)
+
 	// Get retrieves a single object by its ID.
 	Get(id string) (any, error)
-	// Create stores a new object. The object must have an "id" JSON field.
+
+	// Create stores a new object.
+	// The object should have an "id" field that serves as the unique key.
 	Create(obj any) error
+
 	// Update modifies an existing object.
 	Update(id string, obj any) error
+
 	// Delete removes an object by ID.
 	Delete(id string) error
 }
@@ -391,16 +404,27 @@ type Storage interface {
 // MemoryStorage is a simple, thread-safe in-memory storage implementation.
 //
 // All objects are stored in a map protected by a sync.RWMutex.
-// For production, you would replace this with a real database.
+// This provides basic ACID properties for this example.
+//
+// For production use, you would replace this with a real database.
+//
+// Integration with EventBus:
+// When an object is created, updated, or deleted, MemoryStorage publishes
+// an event to the EventBus. This allows watch clients and controllers
+// to react to changes without polling.
 type MemoryStorage struct {
 	mu       sync.RWMutex
 	items    map[string]any
+//	eventBus EventBus (Added in Chapter 13)
+	resource string
 }
 
 // NewMemoryStorage creates a new in-memory storage instance.
 func NewMemoryStorage() Storage {
 	return &MemoryStorage{
 		items:    make(map[string]any),
+//		eventBus: nil, (Added in Chapter 13)
+		resource: "",
 	}
 }
 ```
