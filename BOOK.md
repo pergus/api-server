@@ -417,7 +417,7 @@ type Storage interface {
 type MemoryStorage struct {
 	mu       sync.RWMutex
 	items    map[string]any
-//	eventBus EventBus (Added in Chapter 13)
+	//eventBus EventBus (Added in Chapter 13)
 	resource string
 }
 
@@ -425,7 +425,7 @@ type MemoryStorage struct {
 func NewMemoryStorage() Storage {
 	return &MemoryStorage{
 		items:    make(map[string]any),
-//		eventBus: nil, (Added in Chapter 13)
+		//eventBus: nil, (Added in Chapter 13)
 		resource: "",
 	}
 }
@@ -496,7 +496,7 @@ func (s *MemoryStorage) Create(obj any) error {
 	s.items[id] = obj
 
 	// Publish ADDED event if event bus is attached
-	/*
+	/* Added in Chapter 13
 	if s.eventBus != nil {
 		s.eventBus.Publish(Event{
 			Type:      Added,
@@ -522,7 +522,7 @@ func (s *MemoryStorage) Update(id string, obj any) error {
 	s.items[id] = obj
 
 	// Publish MODIFIED event if event bus is attached
-	/*
+	/* Added in Chapter 13
 	if s.eventBus != nil {
 		s.eventBus.Publish(Event{
 			Type:      Modified,
@@ -543,7 +543,7 @@ func (s *MemoryStorage) Delete(id string) error {
 	defer s.mu.Unlock()
 
 	//obj, exists := s.items[id] (Added in Chapter 13)
-	_, exists := s.items[id]
+	_, exists := s.items[id]   //(Removed in Chapter 13)
 	if !exists {
 		return fmt.Errorf("not found: %s", id)
 	}
@@ -551,7 +551,7 @@ func (s *MemoryStorage) Delete(id string) error {
 	delete(s.items, id)
 
 	// Publish DELETED event if event bus is attached
-	/*
+	/* Added in Chapter 13
 	if s.eventBus != nil {
 		s.eventBus.Publish(Event{
 			Type:      Deleted,
