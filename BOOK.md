@@ -4142,7 +4142,7 @@ known at compile time, the server will gain the ability to extend itself while
 it is running. New resource types can be introduced without modifying the core
 server, rebuilding the application, or changing the existing API routes.
 
-Custom Resource Definitions (CRDs) provide one way to achieve this. A CRaD
+Custom Resource Definitions (CRDs) provide one way to achieve this. A CRD
 describes a new resource using data: its name, group, version, schema, and other
 metadata. The server reads this definition at runtime, creates the necessary
 registration entries, and immediately exposes the new resource through the same
