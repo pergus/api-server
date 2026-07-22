@@ -4168,9 +4168,11 @@ that run on top of it.
 
 ### Goal
 
-Let a client `POST /crds` a definition and immediately get a fully working
-`/api/{plural}` endpoint — no restart, no new Go code. We need a CRD registry, a
-generic "dynamic object," and CRD routes in the router.
+Allow a client to submit a Custom Resource Definition (CRD) `POST /crds` to the
+server and have it immediately get a fully working `/api/{plural}` endpoint — no
+restart, no new Go code. We need a CRD registry, a generic "dynamic object," and
+CRD routes in the router.
+
 
 **Figure 10.1 — CRD registration wires three tables at once**
 
