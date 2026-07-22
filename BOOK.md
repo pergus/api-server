@@ -4538,7 +4538,7 @@ same generic infrastructure as built-in resources. The server does not need to
 understand every possible CRD schema. It only needs to understand how to store,
 retrieve, and serialize a generic object.
 
-**Listin 10.2 - `pkg/api/dynamic.go` (Dynamic Objects)**
+**Listing 10.2 - `pkg/api/dynamic.go` (Dynamic Objects)**
 ```go
 // pkg/api/dynamic.go
 package api
@@ -4739,7 +4739,7 @@ continuing to use the same routing, storage, and handler infrastructure already
 used by built-in resources.
 
 
-**Listin 10.3 - `pkg/api/dynamic.go` (Dynamic Resouces)**
+**Listing 10.3 - `pkg/api/dynamic.go` (Dynamic Resouces)**
 ```go
 // DynamicResource is a Resource implementation for CRD-based resources.
 // It wraps a CRD definition with in-memory storage and generic object handling.
