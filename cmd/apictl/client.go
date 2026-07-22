@@ -1,3 +1,4 @@
+// cmd/apictl/client.go
 package main
 
 import (
@@ -157,6 +158,10 @@ func (c *Client) DeleteResource(resource, id string) error {
 	return err
 }
 
+// -----------------------------------------------------------------------------
+// CRDs
+//
+
 // CreateCRD creates a new CRD.
 func (c *Client) CreateCRD(crd map[string]interface{}) error {
 	data, err := json.Marshal(crd)
@@ -200,6 +205,10 @@ func (c *Client) DeleteCRD(crdName string) error {
 	return err
 }
 
+// -----------------------------------------------------------------------------
+// Plugins
+//
+
 // ListPlugins lists all loaded plugins.
 func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
 	resp, err := c.get("/plugins")
@@ -231,7 +240,9 @@ func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
 	return res, count, nil
 }
 
+// -----------------------------------------------------------------------------
 // Helper methods
+//
 
 func (c *Client) get(path string) ([]byte, error) {
 	return c.request("GET", path, nil)
