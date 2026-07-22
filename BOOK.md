@@ -1478,10 +1478,12 @@ factory function in the scheme.
 // Supports ?watch=true for streaming events instead of listing.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
 	// Check if client is requesting to watch events
+	/* Addd in Chapter 14
 	if req.URL.Query().Get("watch") == "true" {
 		r.watch(w, req, resource)
 		return
 	}
+	*/
 
 	// Normal list operation
 	objects, err := resource.Storage().List()
