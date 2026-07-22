@@ -837,11 +837,12 @@ func (r *SimpleRegistry) Count() int {
 ### The Scheme
 
 Generic handlers face a problem: to decode incoming JSON they need a concrete
-destination object, but they must not import `User` or `Order`. The `Scheme`
-solves this by mapping a name to a factory function that returns a fresh, empty
-object. This creates a layer of indirection between the generic processing logic
-and the concrete types being handled, allowing the system to work with new
-resource types without requiring changes to the handler itself.
+destination object, but they must not import the resource e.g. `User` or
+`Order`. The `Scheme` solves this by mapping a name to a factory function that
+returns a fresh, empty object. This creates a layer of indirection between the
+generic processing logic and the concrete types being handled, allowing the
+system to work with new resource types without requiring changes to the handler
+itself.
 
 At runtime, the handler can ask the `Scheme` for an object based only on its
 registered name, populate it with decoded data, and continue processing without
