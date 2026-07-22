@@ -3571,10 +3571,11 @@ requested resource is `crd` or `crds` before deciding which client method to
 call. This allows the command-line interface to present a consistent experience
 while still accommodating the server's specialized endpoints.
 
-The `cmdApply` command combines multiple operations into a single workflow.
-Inspired by tools such as `kubectl`, it examines the contents of a file and
-decides what action to perform instead of requiring the user to choose between
-separate commands.
+The cmdApply command combines multiple operations into a single workflow. It
+examines the contents of a file and determines the appropriate action to perform
+instead of requiring the user to choose between separate commands. This allows
+users to provide a resource definition and let the CLI determine how it should
+be processed.
 
 The command begins by reading the supplied file and attempting to parse it as
 YAML. If that fails, it falls back to JSON. Supporting both formats makes the
