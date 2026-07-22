@@ -3569,7 +3569,9 @@ There is one special case: Custom Resource Definitions (CRDs). Because CRDs are
 managed through their own API endpoints, the command checks whether the
 requested resource is `crd` or `crds` before deciding which client method to
 call. This allows the command-line interface to present a consistent experience
-while still accommodating the server's specialized endpoints.
+while still accommodating the server's specialized endpoints. The implementation
+of CRDs is covered in a later chapter; for now, the command simply establishes
+the interface that will support those features. 
 
 The cmdApply command combines multiple operations into a single workflow. It
 examines the contents of a file and determines the appropriate action to perform
@@ -3741,6 +3743,7 @@ func cmdApply(c *Client, args []string) {
 		fmt.Printf("%s applied\n", resource)
 	}
 }
+
 ```
 
 ### explain and helpers
@@ -3775,9 +3778,9 @@ logic.
 The `extractID` helper retrieves an object's identifier in a flexible way. It
 first checks for a top-level `id` field, which is how the built-in resources
 represent their identifiers. If that field is not present, it checks for a
-Kubernetes-style `metadata.name` field, allowing the CLI to work with
-dynamically created resources that follow that convention. If neither location
-contains an identifier, it returns `"unknown"`.
+`metadata.name` field, allowing the CLI to work with dynamically created
+resources that follow that convention. If neither location contains an
+identifier, it returns `"unknown"`.
 
 The `getFieldNames` helper collects the field names from a resource object and
 returns them as a slice of strings. This provides a small utility for code that
@@ -4060,11 +4063,6 @@ func formatValue(value interface{}) string {
 }
 
 ```
-
-The implementation in the repository now includes a real `cmdWatch` command
-that calls the client-side watch stream and prints incoming SSE events. The
-book's later chapter on watch streaming shows the full behavior, so this
-chapter can simply present it as part of the completed CLI surface.
 
 ### Checkpoint
 
