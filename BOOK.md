@@ -5110,6 +5110,254 @@ func (s *Server) CRDRegistry() CRDRegistry {
 
 ```
 
+## Adding schemas to built-in resources
+
+CRDs are not only useful for resources that are created dynamically at runtime.
+They can also describe resources that are compiled directly into the server.
+
+Built-in resources such as users, products, and orders already have Go structs,
+resource implementations, and registered object factories. However, the server
+can still benefit from having schema information available for these resources.
+By registering schemas for built-in resources, they can participate in the same
+discovery and metadata workflows as dynamically created resources.
+
+The important distinction is that a schema registration does not create the
+resource. The resource already exists because it was registered through
+`RegisterResource` and `RegisterType`. The CRD registration only adds
+descriptive information about the resource.
+
+This creates a useful separation:
+
+```mermaid
+flowchart TD
+    A[Built-in Go Resource] --> B[RegisterResource]
+    A --> C[RegisterType]
+    A --> D[CRDDefinition Schema]
+    D --> E[CRD Registry]
+    E --> F[Discovery and Metadata]
+```
+
+The registration process for a built-in resource has three parts:
+
+1. Register the resource implementation.
+2. Register the object factory.
+3. Register a CRD definition containing the schema.
+
+The first two steps make the resource operational. They allow the API server to
+create objects and handle requests. The third step describes the resource so
+that clients and tools can understand its structure.
+
+For example, the `User` resource already exists as a Go type:
+
+```go
+type User struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	IsActive  bool   `json:"is_active"`
+}
+```
+
+The server registers it normally:
+
+```go
+userResource := resources.NewUserResource()
+
+server.RegisterResource(userResource)
+
+server.RegisterType("users", func() any {
+	return &resources.User{}
+})
+```
+
+The schema is then added separately:
+
+```go
+userCRD := &api.CRDDefinition{
+	Group:   "api.example.io",
+	Version: "v1",
+	Kind:    "User",
+	Plural:  "users",
+	Schema: map[string]interface{}{
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type": "string",
+			},
+			"name": map[string]interface{}{
+				"type": "string",
+			},
+			"email": map[string]interface{}{
+				"type": "string",
+			},
+			"is_active": map[string]interface{}{
+				"type": "boolean",
+			},
+		},
+	},
+}
+
+server.CRDRegistry().RegisterCRD(userCRD)
+```
+
+The following listing shows how built-in resources are registered during server
+startup. The existing resource registration remains unchanged: each resource is
+added to the resource registry and its object factory is added to the scheme.
+The additional step is registering a matching `CRDDefinition` after the resource
+has been created.
+
+This pattern allows built-in and dynamically created resources to share the same
+metadata representation. The resource implementation continues to provide the
+behavior required by the API server, while the CRD definition provides the
+schema information used for discovery and other metadata-based features.
+
+Each built-in resource follows the same sequence. The server first registers the
+resource, then registers the type factory, and finally registers the schema with
+the CRD registry. Keeping these steps together makes it clear that the schema
+describes an existing resource rather than creating a new one.
+
+**Listing 10.7 — `cmd/api-server/main.go` (Registrer built-in resources)**
+```go
+// Register Users
+userResource := resources.NewUserResource()
+if err := server.RegisterResource(userResource); err != nil {
+	log.Fatalf("Failed to register users: %v", err)
+}
+if err := server.RegisterType("users", func() any { return &resources.User{} }); err != nil {
+	log.Fatalf("Failed to register users type: %v", err)
+}
+// Register User schema as CRD
+userCRD := &api.CRDDefinition{
+	Group:   "api.example.io",
+	Version: "v1",
+	Kind:    "User",
+	Plural:  "users",
+	Schema: map[string]interface{}{
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "Unique user identifier",
+			},
+			"name": map[string]interface{}{
+				"type":        "string",
+				"description": "User's full name",
+			},
+			"email": map[string]interface{}{
+				"type":        "string",
+				"description": "User's email address",
+			},
+			"is_active": map[string]interface{}{
+				"type":        "boolean",
+				"description": "Whether user is active",
+			},
+		},
+	},
+}
+if err := server.CRDRegistry().RegisterCRD(userCRD); err != nil {
+	log.Fatalf("Failed to register user schema: %v", err)
+}
+
+// Register Products
+productResource := resources.NewProductResource()
+if err := server.RegisterResource(productResource); err != nil {
+	log.Fatalf("Failed to register products: %v", err)
+}
+if err := server.RegisterType("products", func() any { return &resources.Product{} }); err != nil {
+	log.Fatalf("Failed to register products type: %v", err)
+}
+// Register Product schema as CRD
+productCRD := &api.CRDDefinition{
+	Group:   "api.example.io",
+	Version: "v1",
+	Kind:    "Product",
+	Plural:  "products",
+	Schema: map[string]interface{}{
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "Product identifier",
+			},
+			"name": map[string]interface{}{
+				"type":        "string",
+				"description": "Product name",
+			},
+			"description": map[string]interface{}{
+				"type":        "string",
+				"description": "Product description",
+			},
+			"price": map[string]interface{}{
+				"type":        "number",
+				"description": "Product price in USD",
+			},
+			"stock": map[string]interface{}{
+				"type":        "integer",
+				"description": "Items in stock",
+			},
+		},
+	},
+}
+if err := server.CRDRegistry().RegisterCRD(productCRD); err != nil {
+	log.Fatalf("Failed to register product schema: %v", err)
+}
+
+// Register Orders
+orderResource := resources.NewOrderResource()
+if err := server.RegisterResource(orderResource); err != nil {
+	log.Fatalf("Failed to register orders: %v", err)
+}
+if err := server.RegisterType("orders", func() any { return &resources.Order{} }); err != nil {
+	log.Fatalf("Failed to register orders type: %v", err)
+}
+// Register Order schema as CRD
+orderCRD := &api.CRDDefinition{
+	Group:   "api.example.io",
+	Version: "v1",
+	Kind:    "Order",
+	Plural:  "orders",
+	Schema: map[string]interface{}{
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "Order identifier",
+			},
+			"customer_id": map[string]interface{}{
+				"type":        "string",
+				"description": "Customer identifier",
+			},
+			"total": map[string]interface{}{
+				"type":        "number",
+				"description": "Order total in USD",
+			},
+			"status": map[string]interface{}{
+				"type":        "string",
+				"description": "Order status (draft, processing, shipped, delivered)",
+			},
+			"created_at": map[string]interface{}{
+				"type":        "string",
+				"description": "ISO 8601 timestamp",
+			},
+		},
+	},
+}
+if err := server.CRDRegistry().RegisterCRD(orderCRD); err != nil {
+	log.Fatalf("Failed to register order schema: %v", err)
+}
+
+```
+
+
+After this registration, the API server has both the executable resource and its descriptive schema.
+
+This approach keeps the CRD registry useful for two different scenarios:
+
+* Dynamically created resources use a CRD definition to create the resource itself.
+* Built-in resources use a CRD definition to describe an existing resource.
+
+The result is a unified discovery model. Clients do not need to know whether a resource was created from a runtime definition or compiled into the application. Both appear as registered resources with metadata describing their API group, version, kind, plural name, and schema.
+
+This also provides a foundation for future features such as API documentation, validation, client generation, and schema discovery. The server can expose information about every available resource through one consistent mechanism, regardless of how that resource was created.
+
+
+
 After these changes, the server can create new resource types at runtime.
 
 The CRD registry stores resource definitions. The dynamic resource connects
@@ -5120,7 +5368,6 @@ infrastructure.
 
 The result is a server whose API surface can expand without changing its core
 routing or resource-handling code.
-
 
 
 ### A CRD definition file
