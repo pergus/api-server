@@ -318,6 +318,7 @@ concrete types such as `User` or `Order`; it only interacts with `Resource`.
 **Listing 3.1 — `pkg/api/resource.go`**
 
 ```go
+// pkg/api/resource.go
 package api
 
 // Resource defines the interface that all API resources must implement.
@@ -363,6 +364,7 @@ CRUD lifecycle.
 **Listing 3.2 — `pkg/api/storage.go` (interface + type)**
 
 ```go
+// pkg/api/storage.go
 package api
 
 import (
@@ -683,6 +685,7 @@ safely and efficiently.
 **Listing 4.1 — `pkg/api/registry.go`**
 
 ```go
+// pkg/api/registry.go
 package api
 
 import (
