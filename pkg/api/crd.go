@@ -1,3 +1,4 @@
+// pkg/api/crd.go
 package api
 
 import (
