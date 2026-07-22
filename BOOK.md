@@ -2322,7 +2322,7 @@ dynamic registration pieces are connected correctly.
 
 The later chapters will extend the server with additional collaborators,
 including custom resource definitions and event handling. Those features will be
-introduced when they are needed rather than added as empty placeholders here.
+introduced when they are needed.
 
 Next, we will give the server real resources to manage and add the application
 entrypoint that starts the runtime. 
