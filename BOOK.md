@@ -2692,9 +2692,10 @@ Three resources, full CRUD, all through generic handlers. The core is done.
 
 # Part III — The Client
 
-A server is only half the story. Kubernetes' `kubectl` never hardcodes the list
-of resource types — it asks the API server what exists. We build `apictl` the
-same way. 
+A server is only half the story. A well-designed API client should not rely on a
+fixed list of resource types — it should discover available resources from the
+API server. We build apictl the same way, allowing it to query the server and
+adapt to the resources it exposes.
 
 ## Chapter 8: The apictl Client Library
 
