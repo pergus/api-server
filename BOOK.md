@@ -1967,6 +1967,7 @@ production environment.
 **Listing 6.1 — `pkg/api/middleware.go`**
 
 ```go
+// pkg/api/middleware.go
 package api
 
 import (
@@ -1975,21 +1976,25 @@ import (
 	"time"
 )
 
-// Middleware wraps an HTTP handler.
+// Middleware is a function that wraps an HTTP handler.
 type Middleware func(http.Handler) http.Handler
 
-// LoggingMiddleware logs each request and its outcome.
+// LoggingMiddleware logs information about each request.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 		log.Printf("[%s] %s %s", r.Method, r.URL.Path, r.RemoteAddr)
+
 		next.ServeHTTP(wrapped, r)
-		log.Printf("[%s] %s completed: %d in %v", r.Method, r.URL.Path, wrapped.statusCode, time.Since(start))
+
+		duration := time.Since(start)
+		log.Printf("[%s] %s completed: %d in %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
 	})
 }
 
-// RecoveryMiddleware converts panics into 500 responses.
+// RecoveryMiddleware catches panics and converts them to 500 errors.
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -2002,30 +2007,34 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// TimingMiddleware logs request duration.
+// TimingMiddleware measures request duration.
 func TimingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("Timing: %v for %s %s", time.Since(start), r.Method, r.URL.Path)
+		duration := time.Since(start)
+		log.Printf("Timing: %v for %s %s", duration, r.Method, r.URL.Path)
 	})
 }
 
-// CORSMiddleware adds permissive CORS headers.
+// CORSMiddleware adds CORS headers.
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
 
-// Chain applies middleware right-to-left so they execute in listed order.
+// Chain applies multiple middleware to a handler.
+// They are applied right-to-left so they execute in the order specified.
 func Chain(h http.Handler, middleware ...Middleware) http.Handler {
 	for i := len(middleware) - 1; i >= 0; i-- {
 		h = middleware[i](h)
@@ -2033,7 +2042,7 @@ func Chain(h http.Handler, middleware ...Middleware) http.Handler {
 	return h
 }
 
-// responseWriter captures the status code and forwards Flush for SSE.
+// responseWriter wraps http.ResponseWriter to capture status code.
 type responseWriter struct {
 	http.ResponseWriter
 	statusCode int
@@ -2046,8 +2055,8 @@ func (rw *responseWriter) WriteHeader(code int) {
 }
 
 // Write delegates to the wrapped writer.
-func (rw *responseWriter) Write(b []byte) (int, error) { 
-	return rw.ResponseWriter.Write(b) 
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	return rw.ResponseWriter.Write(b)
 }
 
 // Flush flushes if supported.
@@ -2056,6 +2065,7 @@ func (rw *responseWriter) Flush() {
 		flusher.Flush()
 	}
 }
+
 ```
 
 ### The Server
