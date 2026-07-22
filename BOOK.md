@@ -5041,7 +5041,7 @@ extension of the system.
 
 The following changes initialize the CRD registry and connect it to the router.
 
-**Listing 10.5 — `pkg/api/server.go` (CRD registry integration)**
+**Listing 10.6 — `pkg/api/server.go` (CRD registry integration)**
 ```go
 // pkg/api/server.go
 package api
