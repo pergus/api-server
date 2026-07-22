@@ -1,3 +1,4 @@
+// cmd/apictl/main.go
 package main
 
 import (

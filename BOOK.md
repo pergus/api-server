@@ -3145,6 +3145,7 @@ documentation.
 **Listing 8.3 — `cmd/apictl/main.go`**
 
 ```go
+// cmd/apictl/main.go
 package main
 
 import (
@@ -3157,6 +3158,7 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
@@ -3189,7 +3191,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Print(`apictl - CLI for the dynamic API server
+	usage := `apictl - CLI for the dynamic API server
 
 USAGE:
   apictl <command> [options]
@@ -3209,11 +3211,16 @@ COMMANDS:
 EXAMPLES:
   apictl api-resources
   apictl get users
+  apictl get users user1
   apictl create -f invoice.json
   apictl apply -f invoice-crd.yaml
+  apictl delete invoices invoice-1
+  apictl explain invoices
   apictl watch orders
-`)
+`
+	fmt.Print(usage)
 }
+
 ```
 
 
