@@ -5123,8 +5123,6 @@ routing or resource-handling code.
 
 
 
-
-
 ### A CRD definition file
 
 A CRD definition is the description of a new resource type. Instead of creating
@@ -5207,7 +5205,7 @@ The result is a server that can grow beyond the resources included in its
 original source code. New concepts can be introduced through data alone, while
 the existing API infrastructure continues to handle them automatically.
 
-**Listing 10.4 — `examples/invoice-crd.yaml`**
+**Listing 10.7 — `examples/invoice-crd.yaml`**
 
 ```yaml
 apiVersion: api.example.io/v1
@@ -5245,7 +5243,7 @@ spec:
 
 And a sample object:
 
-**Listing 10.5 — `examples/invoice-1.json`**
+**Listing 10.8 — `examples/invoice-1.json`**
 
 ```json
 {
