@@ -1344,7 +1344,7 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
 	// Handle /crds endpoints
-	/* Added in Chapter 13
+	/* Added in Chapter 10
 	if strings.HasPrefix(path, "/crds") {
 		r.routeCRD(w, req)
 		return
@@ -4805,6 +4805,9 @@ router can coordinate runtime resource creation.
 The event bus remains disabled because event publishing is introduced later and
 is not required for CRD registration.
 
+The `/crd` handle in the `route` method has to be uncommented so that CRD
+requests are sent to `routeCRD`.
+
 **Listing 10.4 — `pkg/api/router.go` (CRD registry integration)**
 ```go
 type Router struct {
@@ -4823,6 +4826,53 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry /*,  ev
 		crdRegistry: crdRegistry,
 		//eventBus:    eventBus,    (Added in Chapter 13)
 		mux: http.NewServeMux(),
+	}
+}
+
+// route is the main request dispatcher.
+// This single handler routes ALL resource and CRD requests.
+func (r *Router) route(w http.ResponseWriter, req *http.Request) {
+	path := req.URL.Path
+
+	// Handle /crds endpoints
+	if strings.HasPrefix(path, "/crds") {
+		r.routeCRD(w, req)
+		return
+	}
+
+	// Handle /api/{resource} endpoints
+	if !strings.HasPrefix(path, "/api/") {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	// Remove /api/ prefix and split
+	parts := strings.Split(strings.TrimPrefix(path, "/api/"), "/")
+	if len(parts) < 1 || parts[0] == "" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	resourceName := parts[0]
+
+	// Look up resource in registry
+	// This happens on EVERY request, which is fine because Lookup uses a read lock.
+	resource, ok := r.registry.Lookup(resourceName)
+	if !ok {
+		http.Error(w, fmt.Sprintf("resource %q not found", resourceName), http.StatusNotFound)
+		return
+	}
+
+	// Determine which handler to call based on HTTP method and URL structure
+	if len(parts) == 1 {
+		// /api/{resource} - list or create
+		r.routeListOrCreate(w, req, resource)
+	} else if len(parts) == 2 && parts[1] != "" {
+		// /api/{resource}/{id} - get, update, or delete
+		id := parts[1]
+		r.routeItemOp(w, req, resource, id)
+	} else {
+		http.Error(w, "not found", http.StatusNotFound)
 	}
 }
 
