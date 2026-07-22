@@ -4071,15 +4071,31 @@ A complete, useful CLI:
 ```bash
 go build -o apictl ./cmd/apictl
 
-./apictl create -f - <<'EOF'
-{"kind":"User","id":"bob","name":"Bob","email":"bob@x.io","is_active":true}
+cat > bob.json <<'EOF'
+{
+  "kind": "User",
+  "id": "bob",
+  "name": "Bob",
+  "email": "bob@x.io",
+  "is_active": true
+}
 EOF
-# (or save to a file and pass its path)
+
+./apictl create -f bob.json
+users created: bob
 
 ./apictl get users
 # ID    EMAIL       IS_ACTIVE  NAME
-# alice alice@...   true       Alice Johnson
 # bob   bob@x.io    true       Bob
+
+./apictl get users bob
+# {
+#   "email": "bob@x.io",
+#   "id": "bob",
+#   "is_active": true,
+#   "name": "Bob"
+# }
+
 ```
 
 You now have a discovery-driven client that already works with everything the
