@@ -19,7 +19,7 @@ MANIFEST.md                     This manifest
 ### Command (Entry Point)
 
 ```
-cmd/server/main.go              Server initialization (150 lines)
+cmd/server/main.go              Server initialization
                                 - Registers built-in resources
                                 - Starts plugin system
                                 - Begins HTTP listening
@@ -28,49 +28,49 @@ cmd/server/main.go              Server initialization (150 lines)
 ### Core API Framework
 
 ```
-pkg/api/types.go                Common response types (40 lines)
-pkg/api/resource.go             Resource interface (30 lines)
-pkg/api/storage.go              Storage interface & MemoryStorage (150 lines)
-pkg/api/registry.go             Thread-safe resource registry (120 lines)
-pkg/api/scheme.go               Type factory registry (80 lines)
-pkg/api/router.go               Generic HTTP routing (250 lines)
-pkg/api/middleware.go           Logging, recovery, timing, CORS (100 lines)
-pkg/api/server.go               HTTP server wrapper (100 lines)
+pkg/api/types.go                Common response types
+pkg/api/resource.go             Resource interface
+pkg/api/storage.go              Storage interface & MemoryStorage
+pkg/api/registry.go             Thread-safe resource registry
+pkg/api/scheme.go               Type factory registry
+pkg/api/router.go               Generic HTTP routing
+pkg/api/middleware.go           Logging, recovery, timing, CORS
+pkg/api/server.go               HTTP server wrapper
 ```
 
 ### Plugin System
 
 ```
-pkg/plugins/interface.go        Plugin interface definition (30 lines)
-pkg/plugins/loader.go           Plugin discovery and loading (200 lines)
+pkg/plugins/interface.go        Plugin interface definition
+pkg/plugins/loader.go           Plugin discovery and loading
 ```
 
 ### Built-in Resources
 
 ```
-pkg/resources/users.go          User resource implementation (50 lines)
-pkg/resources/products.go       Product resource implementation (50 lines)
-pkg/resources/orders.go         Order resource implementation (50 lines)
+pkg/resources/users.go          User resource implementation
+pkg/resources/products.go       Product resource implementation
+pkg/resources/orders.go         Order resource implementation
 ```
 
 ### Example Plugin
 
 ```
-plugins/invoices/main.go        Invoice plugin example (130 lines)
-plugins/build.sh                Plugin build script (~20 lines)
+plugins/invoices/main.go        Invoice plugin example
+plugins/build.sh                Plugin build script
 ```
 
 ## Total Statistics
 
-| Category | Files | Lines |
-|----------|-------|-------|
-| Framework | 8 | 850 |
-| Plugins | 2 | 230 |
-| Resources | 3 | 150 |
-| Server | 1 | 150 |
-| Documentation | 5 | ~2,000 |
-| Configuration | 1 | 3 |
-| **TOTAL** | **20** | **~3,400** |
+| Category | Files |
+|----------|-------|
+| Framework | 8 |
+| Plugins | 2 |
+| Resources | 3 |
+| Server | 1 |
+| Documentation | 5 |
+| Configuration | 1 |
+| **TOTAL** | **20** |
 
 ## Quick Start
 
@@ -254,5 +254,3 @@ This is a complete, production-quality example of:
 - Generic REST API routing
 - Runtime extensibility
 - Plugin system
-
-All in ~1,600 lines of idiomatic Go code.
