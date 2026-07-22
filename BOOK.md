@@ -1197,7 +1197,7 @@ import (
 
 // Router is the HTTP request dispatcher.
 //
-// THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
+// Unlike typical REST servers that create routes for each resource at startup:
 //
 //	GET /users, POST /users, GET /users/{id}, etc.
 //
@@ -1220,18 +1220,18 @@ import (
 type Router struct {
 	registry    Registry
 	scheme      Scheme
-	crdRegistry CRDRegistry
-	eventBus    EventBus
+	//crdRegistry CRDRegistry (Added in Chapter 10)
+	//eventBus    EventBus    (Added in Chapter 13)
 	mux         *http.ServeMux
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+func NewRouter(registry Registry, scheme Scheme /*, crdRegistry CRDRegistry, eventBus EventBus */) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
-		crdRegistry: crdRegistry,
-		eventBus:    eventBus,
+		//crdRegistry: crdRegistry, (Added in Chapter 10)
+		//eventBus:    eventBus,    (Added in Chapter 13)
 		mux:         http.NewServeMux(),
 	}
 }
@@ -1241,11 +1241,12 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventB
 func (r *Router) Setup() {
 	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
-	r.mux.HandleFunc("/apis", r.discoverAPIs)
-	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
-
+	//r.mux.HandleFunc("/apis", r.discoverAPIs)     (Added in Chapter 11)
+	//r.mux.HandleFunc("/apis/", r.discoverAPIPath) (Added in Chapter 11)
+	
 	// Plugin endpoint
-	r.mux.HandleFunc("/plugins", r.listPlugins)
+	//r.mux.HandleFunc("/plugins", r.listPlugins) (Added in Chapter 12)
+	
 
 	// Catch-all handler for all resource and CRD operations
 	r.mux.HandleFunc("/", r.route)
@@ -1343,10 +1344,12 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
 	// Handle /crds endpoints
+	/* Added in Chapter 13
 	if strings.HasPrefix(path, "/crds") {
 		r.routeCRD(w, req)
 		return
 	}
+	*/
 
 	// Handle /api/{resource} endpoints
 	if !strings.HasPrefix(path, "/api/") {
