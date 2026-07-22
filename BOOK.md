@@ -4164,15 +4164,21 @@ lifecycle management, while extensions provide the resources and capabilities
 that run on top of it.
 
 
-## Chapter 10: Custom Resource Definitions
+# Chapter 10: Custom Resource Definitions
 
-### Goal
+## Goal
 
-Allow a client to submit a Custom Resource Definition (CRD) `POST /crds` to the
-server and have it immediately get a fully working `/api/{plural}` endpoint — no
-restart, no new Go code. We need a CRD registry, a generic "dynamic object," and
-CRD routes in the router.
+Allow a client to submit a Custom Resource Definition (CRD) with `POST /crds`
+and immediately receive a fully working API endpoint for the new resource. The
+server should be able to introduce new resource types at runtime without
+requiring a restart or additional Go code.
 
+To achieve this, the server needs three new capabilities:
+
+1. A CRD registry to store runtime resource definitions.
+2. A generic object representation that can store arbitrary resource data.
+3. Router integration that can expose dynamically created resources through 
+   the existing API infrastructure.
 
 **Figure 10.1 — CRD registration wires three tables at once**
 
@@ -4187,100 +4193,135 @@ flowchart TD
     C3 --> OK
 ```
 
-### The CRD registry
+## How CRD registration works
 
-### The CRD registry
+A CRD does not create a resource by itself. It is only a description of a
+resource type. The server must translate that definition into the same internal
+structures used by built-in resources before clients can interact with it.
 
-A `CRDDefinition` describes a new resource type that can be introduced while the
-server is running. Instead of defining a Go struct and recompiling the
-application, users can provide a resource description containing the information
-the server needs to expose the new API.
+The registration process begins when a client submits a CRD definition through
+`POST /crds`. The router receives the definition and first validates that it
+contains the required information: group, version, kind, and plural name. These
+fields provide the identity needed to expose the resource and determine its API
+path.
 
-The CRD registry is responsible for storing these definitions and making them
-available to the rest of the system. It acts as the source of truth for
-dynamically created resources, allowing the API server to discover what custom
-resources exist, route requests correctly, and provide metadata about those
-resources.
+After validation succeeds, the definition is stored in the CRD registry. The
+registry keeps track of which dynamic resource types exist and provides the
+information needed for future operations such as listing or removing CRDs.
 
-A `CRDDefinition` contains the core pieces of information required to identify a
-resource. The `Group` and `Version` fields determine where the resource exists
-in the API hierarchy, while `Kind` describes the object type from the user's
-perspective. The `Plural` field is the name used in API paths and commands, such
-as `invoices` or `reports`. The optional `Schema` field stores the structure of
-the resource, allowing clients and tools to understand which fields are
-available.
+The next step is creating a `DynamicResource` from the definition. This converts
+the CRD description into a resource that implements the same interfaces as
+resources defined directly in Go. The dynamic resource receives its own storage
+backend and knows how to create new instances of the corresponding dynamic
+object.
 
-Before a CRD can be registered, it must pass validation. The `Validate` method
-checks that all required identity fields are present. Without a group, version,
-kind, or plural name, the server would not know how to expose the resource or
-how to route requests to it. Keeping this validation close to the definition
-ensures that invalid resource descriptions are rejected before they enter the
-registry.
+The new resource is then added to the main resource registry. This is the point
+where the resource becomes visible to the generic API handlers. Because the
+existing CRUD handlers operate against the `Resource` interface, they do not
+need to know whether the resource was compiled into the server or created
+dynamically.
 
-The `FullName` method creates a unique identifier for a CRD by combining its
-plural name and group. For example, an `invoices` resource in the `example.io`
-group becomes `invoices.example.io`. This format provides a stable name that can
-be used when retrieving or removing a CRD.
+Finally, the router registers an object factory with the scheme. The scheme is
+responsible for creating empty objects when handlers need to decode incoming
+requests. By registering a factory for the new resource name, the server knows
+how to create the correct `DynamicObject` whenever a client performs a create or
+update operation.
 
-The `APIPath` method generates the URL path where the resource will be exposed.
-For example, a resource with group `example.io`, version `v1`, and plural
-`invoices` maps to:
+The complete flow is:
+
+* Receive a CRD definition.
+* Validate the definition.
+* Store it in the CRD registry.
+* Create a dynamic resource.
+* Register the resource with the resource registry.
+* Register the object factory with the scheme.
+
+After these steps complete, the new API endpoint is available immediately. No
+restart is required because the server has extended its own runtime
+configuration.
+
+This design separates the concept of a resource definition from the
+implementation of the API machinery. The router, storage layer, and generic
+handlers continue to operate exactly as they did before; they simply receive
+another resource that happens to have been created dynamically.
+
+## The CRD registry
+
+A `CRDDefinition` describes a resource type that can be introduced while the
+server is running. Instead of defining a Go struct and rebuilding the
+application, a client provides a description containing the information required
+to expose a new API resource.
+
+The CRD registry stores these definitions and makes them available to the rest
+of the server. It becomes the source of truth for dynamically created resources,
+allowing the API layer to discover which custom resources exist and how they
+should be exposed.
+
+A CRD contains the information needed to identify and expose a resource. The
+`Group` and `Version` fields define where the resource belongs in the API
+hierarchy. The `Kind` field identifies the object type from the client's
+perspective. The `Plural` field determines the collection name used in API paths
+and commands. The optional `Schema` field stores additional structure
+information about the resource.
+
+Before a definition is accepted, it must be validated. The validation step
+ensures that required identity fields are present before the resource enters the
+registry. Without these fields, the server would not know how to identify the
+resource or create a route for it.
+
+The `FullName` method provides a stable identifier by combining the plural name
+and group. For example, a resource with the plural name `invoices` in the group
+`example.io` becomes:
+
+```
+invoices.example.io
+```
+
+This identifier is used when retrieving and removing registered definitions.
+
+The `APIPath` method generates the endpoint where the resource will be exposed:
 
 ```
 /apis/example.io/v1/invoices
 ```
 
-This follows the same pattern used by many extensible API systems: groups
-separate different families of resources, versions allow schemas to evolve over
-time, and plural names identify the collection being accessed.
+The registry interface intentionally hides the underlying storage
+implementation. Other components interact with the registry through the
+interface rather than depending on how definitions are stored internally. This
+keeps CRD management isolated and allows the implementation to evolve without
+affecting the router or handlers.
 
-The `CRDRegistry` interface defines the operations required to manage these
-definitions. The rest of the server depends only on this interface rather than a
-specific implementation. This keeps the design flexible and allows the storage
-mechanism to change later without affecting the router or other components.
+The registry provides operations to:
 
-The registry supports five main operations:
+* register a CRD definition,
+* remove a CRD definition,
+* retrieve a CRD by name,
+* list all registered CRDs,
+* locate a CRD using its plural resource name.
 
-* `RegisterCRD` adds a new resource definition.
-* `UnregisterCRD` removes an existing definition.
-* `GetCRD` retrieves a CRD using its full name.
-* `ListCRDs` returns all registered custom resources.
-* `FindByPlural` performs a fast lookup using the resource name used in API paths.
+The implementation maintains two indexes. One stores CRDs by their full name,
+allowing direct lookup. The second stores a mapping from plural names to full
+names, allowing API routing to quickly determine whether a resource is
+dynamically registered.
 
-The `CRDManager` implementation uses two maps internally. The first map stores
-CRDs by their full name, which provides direct access when a complete identifier
-is available. The second map indexes CRDs by plural name, allowing the router to
-quickly determine whether a request refers to a custom resource. In the current
-implementation, the list operation simply returns the registered entries that
-are currently present in the registry; it does not guarantee a particular
-ordering.
+Because CRDs can be created and removed while the server is processing requests,
+the registry must support concurrent access. A read/write mutex protects the
+internal maps. Read operations use shared locks, while registration and removal
+use exclusive locks to prevent inconsistent state.
 
-Because CRDs can be added and removed while requests are being processed, the
-registry must be safe for concurrent access. The implementation uses a
-`sync.RWMutex` to protect the maps. Read operations such as lookup and listing
-use a read lock, allowing multiple requests to inspect the registry at the same
-time. Write operations such as registration and removal use an exclusive lock to
-prevent inconsistent state.
+When a CRD is registered, the definition is validated and checked for duplicates
+before being stored. Existing definitions are not replaced automatically because
+doing so could leave the server with routes and resources that no longer match
+the original definition.
 
-When a CRD is registered, the registry first validates the definition and then
-checks whether a resource with the same full name already exists. Duplicate
-registrations are rejected to prevent accidental replacement of an existing
-resource definition.
+Removing a CRD updates both indexes to ensure that future lookups do not return
+stale definitions.
 
-Removing a CRD updates both indexes. The full-name entry is deleted from the
-main map, and the plural lookup entry is removed from the secondary index.
-Maintaining both maps together ensures that future lookups cannot return stale
-resource definitions.
-
-The registry is the foundation for runtime resource creation. Later components
-will use it to expose new API endpoints, generate discovery information, and
-connect dynamically defined resources to storage. By keeping CRD management
-separate from the core router and handlers, the server gains the ability to grow
-at runtime without changing the code that handles requests.
-
+The registry provides the foundation for runtime resource creation. Later
+components use it to create resources, expose endpoints, and connect dynamic
+types to the existing generic API machinery.
 
 **Listing 10.1 — `pkg/api/crd.go`**
-
 ```go
 // pkg/api/crd.go
 package api
@@ -4431,97 +4472,73 @@ func (r *CRDManager) FindByPlural(plural string) (*CRDDefinition, bool) {
 
 ```
 
-### Dynamic objects
+## Dynamic objects
 
-A CRD introduces a new resource type without introducing a new Go type. This
-creates an important difference from the built-in resources used earlier in the
-project. A `User` or `Product` has a concrete struct defined in source code, so
-the compiler knows every field that exists. A custom resource does not have that
-luxury: its structure is only known after the server reads the CRD definition at
-runtime.
+A dynamically created resource presents a challenge that built-in resources do
+not have. A normal resource has a Go struct that defines its fields at compile
+time. The compiler knows the shape of the object, and the application code can
+work directly with that structure.
 
-To support these resources, the server needs a generic object representation
-that can hold arbitrary JSON fields while still behaving like every other API
-object. `DynamicObject` provides this bridge. It stores the standard API fields
-such as `apiVersion`, `kind`, and `metadata`, while allowing resource-specific
-fields to be stored without requiring a predefined struct.
+A CRD-based resource is different. The server only learns about the resource
+after receiving a definition at runtime. There is no generated Go type, and
+there is no struct containing fields that were known when the application was
+built.
 
-The most important compatibility requirement is the object identifier. The
-storage layer and generic handlers expect resources to have an `id` value, but
-some API-style resources use a nested `metadata.name` convention instead.
-`DynamicObject` handles this difference by translating between the two formats,
-allowing different resource representations to work with the same storage and
-API infrastructure.
+`DynamicObject` solves this problem by providing a generic object
+representation. Instead of storing fields in predefined Go properties, it stores
+resource-specific data in maps that can contain arbitrary JSON values.
 
-When JSON enters the server, the custom `UnmarshalJSON` method checks whether
-the object contains a top-level `id` field. If it does, that value is moved into
-`metadata.name`. Internally, the object then follows the standard metadata-based
-representation. This allows existing clients that send simple objects with an
-`id` field to work with dynamically created resources without requiring any
-changes.
+The object still contains the common fields required by the API system:
 
-The reverse happens when the object is returned to a client. The custom
-`MarshalJSON` method takes the internal representation and converts it back into
-a flat JSON structure. The value stored in `metadata.name` is exposed as the
-top-level `id` field, and fields stored inside `spec` and `data` are moved back
-into the top-level object. This keeps the external API format consistent with
-the built-in resources already supported by the server.
+* `apiVersion` identifies the API group and version.
+* `kind` identifies the resource type.
+* `metadata` contains object information such as its identifier.
+* `spec` contains resource-specific fields.
 
-The `GetID` method provides the storage layer with a standard way to retrieve
-the object's identifier. Instead of knowing anything about the structure of a
-custom resource, storage simply asks the object for its ID. The method validates
-that metadata exists, that `metadata.name` is present, and that the value is a
-valid non-empty string.
+This allows dynamic resources to participate in the same API flow as built-in
+resources. Generic handlers can create, retrieve, update, and delete objects
+without knowing the structure of the resource.
 
-The custom JSON methods are what allow dynamic resources to participate in the
-same generic CRUD pipeline as compiled resources. The router does not need
-separate logic for CRDs. The storage layer does not need to understand arbitrary
-schemas. The generic handlers can continue working because the dynamic object
-adapts runtime-defined resources to the interfaces already used by the
-framework.
+One important responsibility of `DynamicObject` is adapting between external
+JSON formats and the internal representation expected by the server.
 
-The `DynamicResource` type connects a CRD definition to the existing resource
-system. It implements the same `Resource` interface used by built-in resources,
-which means the generic router can treat it exactly like users, products, and
-orders.
+The storage layer requires every object to provide an identifier through the
+`GetID` method. Existing resources use an `id` field, while the dynamic object
+internally stores the identifier in `metadata.name`. When a request is decoded,
+the object converts a top-level `id` field into `metadata.name`.
 
-A dynamic resource contains two important pieces of information: the CRD
-definition that describes the resource and the storage backend that holds its
-objects. The CRD provides metadata such as the resource name, group, version,
-and kind. The storage provides the runtime data operations needed by the generic
-handlers.
+For example, a client can submit:
+```text
+{
+  "id": "invoice-001",
+  "customer": "Acme",
+  "amount": 100
+}
+```
 
-`NewDynamicResource` creates a resource from a CRD definition and assigns it a
-storage backend. This keeps dynamically created resources consistent with
-built-in resources by giving them the same lifecycle and behavior through the
-existing resource interfaces. The important idea is that a resource behaves the
-same way whether it was compiled into the server or registered dynamically at
-runtime.
+The dynamic object internally represents this as:
+```text
+{
+  "metadata": {
+    "name": "invoice-001"
+  },
+  "spec": {
+    "customer": "Acme",
+    "amount": 100
+  }
+}
+```
 
-The `Name` method returns the plural resource name from the CRD. This is the
-name used by API paths and discovery. For example, a CRD defining an `Invoice`
-type with a plural name of `invoices` becomes available through the same generic
-endpoints used by built-in resources.
+When the object is returned to the client, the representation is converted back
+into the external format. This keeps the dynamic resource compatible with
+existing clients and the existing storage implementation.
 
-The `NewObject` method creates an empty instance of the dynamic object. It
-initializes the API version and kind from the CRD definition and prepares empty
-metadata and specification maps. When a client sends a create request, the
-generic handler asks the resource for a new object, decodes JSON into it, and
-stores it without needing to know anything about the fields inside the resource.
+The custom JSON handling is what allows runtime-defined resources to use the
+same generic infrastructure as built-in resources. The server does not need to
+understand every possible CRD schema. It only needs to understand how to store,
+retrieve, and serialize a generic object.
 
-The `CRD` method exposes the original definition so other parts of the system
-can inspect the schema and metadata associated with the resource. This will be
-used later by discovery endpoints, schema inspection commands, and other runtime
-features.
-
-Dynamic objects are the key piece that completes the transition from a server
-with configurable resources to a server with runtime-defined resources. The same
-routing, storage, discovery, and client code now works for both compiled-in
-types and resources that did not exist when the application was built.
-
-
-**Listing 10.2 — `pkg/api/dynamic.go`**
-
+**Listin 10.2 - `pkg/api/dynamic.go` (Dynamic Objects)**
 ```go
 // pkg/api/dynamic.go
 package api
@@ -4647,7 +4664,83 @@ func (d *DynamicObject) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(result)
 }
+```
 
+
+## Dynamic resources
+
+A CRD definition describes what a resource should look like, but the API server
+still needs a resource implementation that can participate in the normal request
+lifecycle.
+
+`DynamicResource` provides that implementation. It adapts a CRD definition into
+the same `Resource` abstraction used by resources that are compiled into the
+server.
+
+A dynamic resource contains two important pieces of information:
+
+1. The CRD definition that describes the resource.
+2. The storage backend used to store instances of that resource.
+
+The CRD definition provides metadata such as the resource name, API group,
+version, and kind. The storage backend provides the persistence operations
+required by the generic handlers.
+
+Creating a dynamic resource does not require any generated code. The server
+simply wraps the definition with the standard resource interface:
+
+```mermaid
+flowchart TD
+    A[CRDDefinition] --> B[DynamicResource]
+    B --> C[Resource Registry]
+    B --> D[Generic API Handlers]
+    B --> E[Storage]
+```
+
+The `Name` method returns the plural resource name from the CRD definition. This
+name becomes the identifier used by the API server when routing requests.
+
+For example, a CRD with:
+```text
+{
+  "kind": "Invoice",
+  "plural": "invoices"
+}
+```
+
+creates a resource named `invoices`.
+
+The `NewObject` method creates a new empty `DynamicObject` whenever the server
+needs an instance of the resource. It initializes the API metadata from the CRD
+definition, including the resource kind and API version.
+
+This allows the generic handlers to work with dynamic resources in exactly the
+same way as built-in resources:
+
+1. The handler asks the resource for a new object.
+2. The request body is decoded into that object.
+3. The object is passed to storage.
+4. The stored object is returned to the client.
+
+The handler does not need to know whether the object came from a compiled Go
+type or a runtime-defined CRD.
+
+The `CRD` method exposes the original definition so that other parts of the system
+can inspect the metadata associated with the resource. This provides a
+connection between the runtime resource and the definition that created it.
+
+Dynamic resources complete the CRD architecture. The registry stores the
+definition, the dynamic resource integrates it with the API framework, and the
+dynamic object provides the flexible data representation required for unknown
+resource types.
+
+Together, these components allow the server to extend its API surface while
+continuing to use the same routing, storage, and handler infrastructure already
+used by built-in resources.
+
+
+**Listin 10.3 - `pkg/api/dynamic.go` (Dynamic Resouces)**
+```go
 // DynamicResource is a Resource implementation for CRD-based resources.
 // It wraps a CRD definition with in-memory storage and generic object handling.
 type DynamicResource struct {
@@ -4694,18 +4787,23 @@ Because `DynamicObject` marshals to `{"id": ..., ...spec}`, the storage layer's
 `extractID` still finds the `id`, and the CLI table still shows an `ID` column.
 The dynamic type slots seamlessly into all the generic machinery.
 
-### CRD routes
 
-The CRD registry is now available to the router, but the router must first be
-updated to store a reference to it. Earlier chapters intentionally kept the
-router focused on built-in resources, leaving CRD support disabled until the
-supporting infrastructure was complete.
+## CRD routes
 
-The crdRegistry field allows the router to coordinate dynamic resource
-registration. When a client submits a new CRD, the router uses this registry to
-store the definition and later retrieve or remove it. The event bus remains
-disabled because event publishing is introduced in a later chapter and is not
-required for CRD registration.
+The next step is connecting CRD support to the HTTP layer. Earlier chapters
+introduced the router structure but intentionally deferred CRD-specific routes
+until the registry and dynamic resource implementation existed.
+
+The router now needs access to the CRD registry. The registry provides the
+information required to create, retrieve, and remove dynamically registered
+resource definitions.
+
+The `crdRegistry` field and constructor parameter were previously commented out
+because CRD support had not yet been introduced. They can now be enabled so the
+router can coordinate runtime resource creation.
+
+The event bus remains disabled because event publishing is introduced later and
+is not required for CRD registration.
 
 **Listing 10.3 — `pkg/api/router.go` (CRD registry integration)**
 ```go
@@ -4718,7 +4816,7 @@ type Router struct {
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, /* eventBus EventBus */) *Router {
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry /*,  eventBus EventBus */) *Router {
 	return &Router{
 		registry: registry,
 		scheme:   scheme,
@@ -4730,23 +4828,28 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, /* eve
 
 ```
 
-With the router connected to the CRD registry, the next step is to add the HTTP
-handlers that expose CRD operations. The routeCRD method provides the entry
-point for all requests under /crds and dispatches each request based on its HTTP
-method.
+With the router connected to the registry, the HTTP handlers can expose CRD
+operations.
 
-The createCRD handler performs the complete registration workflow. It validates
-the submitted definition, adds it to the CRD registry, creates a dynamic
-resource from the definition, registers that resource with the main resource
-registry, and adds the corresponding object factory to the scheme.
+The `routeCRD` method handles requests under `/crds` and dispatches them
+according to the HTTP method and path.
 
-This sequence ensures that a newly registered resource is available through the
-same generic API infrastructure as built-in resources. If any step fails,
-previously completed registration steps are rolled back so the server does not
-remain in a partially configured state.
+The `createCRD` method performs the complete registration workflow:
+
+1. Validate the submitted CRD definition.
+2. Store the definition in the CRD registry.
+3. Create a dynamic resource.
+4. Register the resource with the main resource registry.
+5. Register the object factory with the scheme.
+
+This sequence allows a new resource type to become available immediately. Once
+registration succeeds, the resource can use the same generic routing, storage,
+and object handling infrastructure as existing resources.
+
+If any step fails, previously completed steps are rolled back so that the server
+does not remain in a partially configured state.
 
 **Listing 10.4 — `pkg/api/router.go` (CRD handlers)**
-
 ```go
 // -----------------------------------------------------------------------------
 // CRDs
@@ -4921,6 +5024,106 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 }
 
 ```
+
+## Connecting CRDs to the server
+
+The CRD registry must also be connected at the server level. The server is
+responsible for creating shared application components, so it is the natural
+location for initializing the registry and passing it to the router.
+
+Earlier chapters kept CRD support disabled because the server only required the
+standard resource registry and scheme. Now that resources can be created
+dynamically, the server must retain the CRD registry so that other components
+can access it.
+
+The event bus remains unchanged at this stage because it belongs to a later
+extension of the system.
+
+The following changes initialize the CRD registry and connect it to the router.
+
+**Listing 10.5 — `pkg/api/server.go` (CRD registry integration)**
+```go
+// pkg/api/server.go
+package api
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+)
+
+// Server is the HTTP API server.
+type Server struct {
+	registry    Registry
+	scheme      Scheme
+	crdRegistry CRDRegistry
+	router      *Router
+	httpServer  *http.Server
+	port        int
+	//eventBus    EventBus    (Added in Chapter 13)
+}
+
+// Config holds server configuration.
+type Config struct {
+	Port int
+}
+
+// NewServer creates a new server.
+func NewServer(cfg Config) *Server {
+	registry := NewRegistry()
+	scheme := NewScheme()
+	crdRegistry := NewCRDRegistry()
+
+	router := NewRouter(registry, scheme, crdRegistry /*, eventBus */)
+
+	return &Server{
+		registry:    registry,
+		scheme:      scheme,
+		crdRegistry: crdRegistry,
+		router:      router,
+		//eventBus:    eventBus,    (Added in Chapter 13)
+		port: cfg.Port,
+	}
+}
+
+```
+
+The rest of the server lifecycle remains unchanged. The existing startup process
+continues to configure routes and expose the HTTP API.
+
+A registry accessor is also added so other components can interact with
+registered resource definitions through the server.
+
+This follows the same pattern used by existing accessors such as `Registry()`
+and `Scheme()`, keeping shared server capabilities available without exposing
+internal implementation details.
+
+**Listing 10.6 — `pkg/api/server.go` (CRD registry accessor)**
+```go
+// CRDRegistry returns the CRD registry.
+// Called to manage Custom Resource Definitions.
+func (s *Server) CRDRegistry() CRDRegistry {
+	return s.crdRegistry
+}
+
+```
+
+After these changes, the server can create new resource types at runtime.
+
+The CRD registry stores resource definitions. The dynamic resource connects
+those definitions to the existing resource model. The dynamic object provides a
+generic representation for arbitrary JSON data. The router exposes CRD
+management endpoints and registers the generated resources with the existing API
+infrastructure.
+
+The result is a server whose API surface can expand without changing its core
+routing or resource-handling code.
+
+
+
+
 
 ### A CRD definition file
 
