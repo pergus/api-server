@@ -3223,6 +3223,100 @@ EXAMPLES:
 
 ```
 
+At this stage, the client library is complete, but the command implementations
+are introduced incrementally in the following chapter. The CLI entrypoint
+already defines the overall command structure, so small placeholder
+implementations are provided for commands that are not yet available.
+
+
+**Listing 8.4 — `cmd/apictl/commands.go` (temporary command placeholders)**
+```go
+// cmd/apictl/commands.go
+package main
+
+import (
+	"fmt"
+	"os"
+	"text/tabwriter"
+	
+)
+
+// cmdAPIResources lists all available resources
+func cmdAPIResources(c *Client) {
+	resources, err := c.GetAPIResources()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(resources) == 0 {
+		fmt.Println("No resources found")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME")
+	for _, r := range resources {
+		fmt.Fprintf(w, "%s\n", r)
+	}
+	w.Flush()
+}
+
+// cmdAPIVersions lists all API versions
+func cmdAPIVersions(c *Client) {
+	groups, err := c.GetAPIs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(groups) == 0 {
+		fmt.Println("No API groups found")
+		return
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "GROUP")
+	for _, g := range groups {
+		fmt.Fprintf(w, "%s\n", g)
+	}
+	w.Flush()
+}
+
+
+// These commands are placeholders for functionality introduced in later
+// chapters. They allow the CLI entrypoint to compile while keeping the final
+// command structure visible from the beginning.
+
+func cmdPlugins(c *Client) {
+	fmt.Println("plugins command will be implemented in Chapter 9") 
+}
+
+func cmdGet(c *Client, args []string) {
+	fmt.Println("get command will be implemented in Chapter 9")
+}
+
+func cmdCreate(c *Client, args []string) {
+	fmt.Println("create command will be implemented in Chapter 9")
+}
+
+func cmdDelete(c *Client, args []string) {
+	fmt.Println("delete command will be implemented in Chapter 9")
+}
+
+func cmdApply(c *Client, args []string) {
+	fmt.Println("apply command will be implemented in Chapter 9")
+}
+
+func cmdExplain(c *Client, args []string) {
+	fmt.Println("explain command will be implemented in Chapter 9")
+}
+
+func cmdWatch(c *Client, args []string) {
+	fmt.Println("watch command will be implemented in Chapter 14")
+}
+```
+
 
 ### Checkpoint
 
@@ -3329,6 +3423,7 @@ to extend as new server capabilities are added.
 **Listing 9.1 — `cmd/apictl/commands.go` (discovery, get, plugins)**
 
 ```go
+// cmd/apictl/commands.go
 package main
 
 import (
@@ -3342,17 +3437,19 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// cmdAPIResources lists all available resources.
+// cmdAPIResources lists all available resources
 func cmdAPIResources(c *Client) {
 	resources, err := c.GetAPIResources()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	if len(resources) == 0 {
 		fmt.Println("No resources found")
 		return
 	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME")
 	for _, r := range resources {
@@ -3361,17 +3458,19 @@ func cmdAPIResources(c *Client) {
 	w.Flush()
 }
 
-// cmdAPIVersions lists all API groups.
+// cmdAPIVersions lists all API versions
 func cmdAPIVersions(c *Client) {
 	groups, err := c.GetAPIs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	if len(groups) == 0 {
 		fmt.Println("No API groups found")
 		return
 	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "GROUP")
 	for _, g := range groups {
@@ -3380,18 +3479,20 @@ func cmdAPIVersions(c *Client) {
 	w.Flush()
 }
 
-// cmdPlugins lists loaded plugins.
+// cmdPlugins lists all loaded plugins
 func cmdPlugins(c *Client) {
 	plugins, count, err := c.ListPlugins()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	fmt.Printf("Loaded Plugins: %d\n", count)
 	if len(plugins) == 0 {
 		fmt.Println("No plugins loaded")
 		return
 	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tPATH\tLOADED")
 	for _, p := range plugins {
@@ -3403,12 +3504,13 @@ func cmdPlugins(c *Client) {
 	w.Flush()
 }
 
-// cmdGet lists a resource type or fetches one object.
+// cmdGet lists or retrieves a resource
 func cmdGet(c *Client, args []string) {
 	if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: resource name required\n")
 		os.Exit(1)
 	}
+
 	resource := args[0]
 	var id string
 	if len(args) > 1 {
@@ -3422,10 +3524,12 @@ func cmdGet(c *Client, args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+
 		if len(items) == 0 {
 			fmt.Printf("No %s found\n", resource)
 			return
 		}
+
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		printTable(w, items)
 		w.Flush()
@@ -3437,13 +3541,14 @@ func cmdGet(c *Client, args []string) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+
 		data, err := json.MarshalIndent(item, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		
-		fmt.Println(string(data))		
+
+		fmt.Println(string(data))
 	}
 }
 ```
@@ -3519,44 +3624,60 @@ and the server performs the actual resource operations.
 **Listing 9.2 — `cmd/apictl/commands.go` (create, delete, apply)**
 
 ```go
-// cmdCreate creates a resource from a JSON file.
+// -----------------------------------------------------------------------------
+// Mutating commands
+//
+
+// cmdCreate creates a resource from a file
 func cmdCreate(c *Client, args []string) {
 	if len(args) < 2 || args[0] != "-f" {
-		fmt.Fprintf(os.Stderr, "Usage: apictl create -f <file>\n")
+		fmt.Fprintf(os.Stderr, "Usage: apitcl create -f <file>\n")
 		os.Exit(1)
 	}
-	data, err := os.ReadFile(args[1])
+
+	filename := args[1]
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
 		os.Exit(1)
 	}
+
 	var obj map[string]interface{}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing JSON: %v\n", err)
 		os.Exit(1)
 	}
-	kind, ok := obj["kind"].(string)
-	if !ok {
+
+	// Determine resource type from the object
+	var resource string
+	if kind, ok := obj["kind"].(string); ok {
+		// Infer plural from kind (simplified)
+		resource = pluralize(kind)
+	} else {
 		fmt.Fprintf(os.Stderr, "Error: object must have 'kind' field\n")
 		os.Exit(1)
 	}
-	resource := pluralize(kind)
+
 	id, err := c.CreateResource(resource, obj)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	fmt.Printf("%s created: %s\n", resource, id)
 }
 
-// cmdDelete deletes a resource or a CRD.
+// cmdDelete deletes a resource
 func cmdDelete(c *Client, args []string) {
 	if len(args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: apictl delete <resource> <id>\n")
+		fmt.Fprintf(os.Stderr, "Usage: apitcl delete <resource> <id>\n")
 		os.Exit(1)
 	}
-	resource, id := args[0], args[1]
 
+	resource := args[0]
+	id := args[1]
+
+	// Special case: delete CRDs
 	if resource == "crd" || resource == "crds" {
 		if err := c.DeleteCRD(id); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -3565,31 +3686,39 @@ func cmdDelete(c *Client, args []string) {
 		fmt.Printf("CRD deleted: %s\n", id)
 		return
 	}
+
 	if err := c.DeleteResource(resource, id); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
 	fmt.Printf("%s deleted: %s\n", resource, id)
 }
 
-// cmdApply applies a CRD (YAML) or creates a resource.
+// cmdApply applies a CRD or creates/updates a resource
 func cmdApply(c *Client, args []string) {
 	if len(args) < 2 || args[0] != "-f" {
-		fmt.Fprintf(os.Stderr, "Usage: apictl apply -f <file>\n")
+		fmt.Fprintf(os.Stderr, "Usage: apitcl apply -f <file>\n")
 		os.Exit(1)
 	}
-	data, err := os.ReadFile(args[1])
+
+	filename := args[1]
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Try to parse as YAML first
 	var obj map[string]interface{}
 	if err := yaml.Unmarshal(data, &obj); err != nil {
+		// Fall back to JSON
 		if err := json.Unmarshal(data, &obj); err != nil {
 			fmt.Fprintf(os.Stderr, "Error parsing file: %v\n", err)
 			os.Exit(1)
 		}
 	}
+
 	kind, ok := obj["kind"].(string)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Error: object must have 'kind' field\n")
@@ -3597,18 +3726,28 @@ func cmdApply(c *Client, args []string) {
 	}
 
 	if kind == "CustomResourceDefinition" || kind == "CRD" {
+		// Extract the spec
 		spec, ok := obj["spec"].(map[interface{}]interface{})
 		if !ok {
 			fmt.Fprintf(os.Stderr, "Error: CRD must have 'spec' field\n")
 			os.Exit(1)
 		}
+
 		crd := convertMap(spec)
 		if err := c.CreateCRD(crd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Printf("CRD applied: %v.%v\n", crd["plural"], crd["group"])
+
+		if fullName, ok := crd["name"].(string); ok {
+			fmt.Printf("CRD applied: %s\n", fullName)
+		} else {
+			plural := crd["plural"]
+			group := crd["group"]
+			fmt.Printf("CRD applied: %s.%s\n", plural, group)
+		}
 	} else {
+		// Regular resource
 		resource := pluralize(kind)
 		if _, err := c.CreateResource(resource, obj); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -3698,6 +3837,20 @@ This allows new resource types to become available without requiring changes
 throughout the command implementation.
 
 ```go
+// -----------------------------------------------------------------------------
+// Watch
+//
+// cmdWatch streams events for a resource - Added in Chapter 14
+func cmdWatch(c *Client, args []string) {
+	fmt.Fprintln(os.Stderr, "watch not implemented yet")
+	os.Exit(1)
+}
+
+
+// -----------------------------------------------------------------------------
+// Exlain & Helpers
+//
+
 // cmdExplain shows resource schema
 func cmdExplain(c *Client, args []string) {
 	if len(args) == 0 {
@@ -3781,13 +3934,6 @@ func cmdExplain(c *Client, args []string) {
 		fmt.Printf("(No schema or sample objects available)\n")
 	}
 }
-
-// cmdWatch streams events for a resource
-func cmdWatch(c *Client, args []string) {
-	fmt.Fprintln(os.Stderr, "watch not implemented yet")
-	os.Exit(1)
-}
-
 
 // Helper functions
 
@@ -3927,6 +4073,7 @@ func formatValue(value interface{}) string {
 
 	return fmt.Sprint(value)
 }
+
 ```
 
 The implementation in the repository now includes a real `cmdWatch` command

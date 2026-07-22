@@ -1,3 +1,4 @@
+// cmd/apictl/commands.go
 package main
 
 import (
@@ -125,6 +126,10 @@ func cmdGet(c *Client, args []string) {
 		fmt.Println(string(data))
 	}
 }
+
+// -----------------------------------------------------------------------------
+// Mutating commands
+//
 
 // cmdCreate creates a resource from a file
 func cmdCreate(c *Client, args []string) {
@@ -255,6 +260,65 @@ func cmdApply(c *Client, args []string) {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Watch
+//
+
+// cmdWatch streams events for a resource
+func cmdWatch(c *Client, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "Usage: apictl watch <resource>\n")
+		os.Exit(1)
+	}
+
+	resource := args[0]
+
+	fmt.Printf("Watching events for %s (Ctrl+C to stop)...\n\n", resource)
+
+	result, err := c.Watch(resource)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for {
+		select {
+		case event, ok := <-result.Events:
+			if !ok {
+				// Events channel closed
+				return
+			}
+
+			// Print event type
+			fmt.Printf("EVENT: %s\n", event.Type)
+
+			// Parse and pretty-print the object
+			var obj interface{}
+			if err := json.Unmarshal(event.Data, &obj); err != nil {
+				fmt.Printf("Error parsing event data: %v\n", err)
+				continue
+			}
+
+			data, _ := json.MarshalIndent(obj, "", "  ")
+			fmt.Printf("%s\n\n", string(data))
+
+		case err, ok := <-result.Errors:
+			if !ok {
+				// Errors channel closed
+				return
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Connection error: %v\n", err)
+				os.Exit(1)
+			}
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Exlain & Helpers
+//
+
 // cmdExplain shows resource schema
 func cmdExplain(c *Client, args []string) {
 	if len(args) == 0 {
@@ -336,57 +400,6 @@ func cmdExplain(c *Client, args []string) {
 	} else {
 		fmt.Printf("Resource: %s\n", resource)
 		fmt.Printf("(No schema or sample objects available)\n")
-	}
-}
-
-// cmdWatch streams events for a resource
-func cmdWatch(c *Client, args []string) {
-	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: apictl watch <resource>\n")
-		os.Exit(1)
-	}
-
-	resource := args[0]
-
-	fmt.Printf("Watching events for %s (Ctrl+C to stop)...\n\n", resource)
-
-	result, err := c.Watch(resource)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	for {
-		select {
-		case event, ok := <-result.Events:
-			if !ok {
-				// Events channel closed
-				return
-			}
-
-			// Print event type
-			fmt.Printf("EVENT: %s\n", event.Type)
-
-			// Parse and pretty-print the object
-			var obj interface{}
-			if err := json.Unmarshal(event.Data, &obj); err != nil {
-				fmt.Printf("Error parsing event data: %v\n", err)
-				continue
-			}
-
-			data, _ := json.MarshalIndent(obj, "", "  ")
-			fmt.Printf("%s\n\n", string(data))
-
-		case err, ok := <-result.Errors:
-			if !ok {
-				// Errors channel closed
-				return
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Connection error: %v\n", err)
-				os.Exit(1)
-			}
-		}
 	}
 }
 
