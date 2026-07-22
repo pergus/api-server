@@ -444,7 +444,7 @@ naturally belong without complicating the initial implementation.
 // SetEventBus attaches an event bus to this storage.
 // Events will be published when objects are created, updated, or deleted.
 // This must be called after NewMemoryStorage and before using the storage.
-/*
+/* Added in Chapter 13
 func (s *MemoryStorage) SetEventBus(bus EventBus, resource string) {
 	s.eventBus = bus
 	s.resource = resource
