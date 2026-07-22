@@ -9,12 +9,12 @@ The Watch API and Controller Framework extends the dynamic API server with event
 ### New Files
 
 #### Core Event System
-- **pkg/api/event.go** (100 lines)
+- **pkg/api/event.go**
   - `EventType` enum (ADDED, MODIFIED, DELETED)
   - `Event` struct with Type, Resource, Object, Timestamp
   - `Subscription` type for event delivery
 
-- **pkg/api/eventbus.go** (160 lines)
+- **pkg/api/eventbus.go**
   - `EventBus` interface for pub/sub
   - `SimpleEventBus` implementation with:
     - Thread-safe Subscribe/Unsubscribe
@@ -30,18 +30,18 @@ The Watch API and Controller Framework extends the dynamic API server with event
   - Connection cleanup
 
 #### Controller Framework
-- **pkg/controllers/controller.go** (40 lines)
+- **pkg/controllers/controller.go**
   - `Controller` interface defining reconciliation contract
   - `Name()`, `Resource()`, `Reconcile()`, `Run()` methods
   - Documentation on controller patterns
 
-- **pkg/controllers/manager.go** (120 lines)
+- **pkg/controllers/manager.go**
   - `ControllerManager` for lifecycle management
   - `baseController` helper for common patterns
   - `runLoop()` for event processing
   - Concurrent goroutine management
 
-- **pkg/controllers/orders.go** (160 lines)
+- **pkg/controllers/orders.go**
   - `OrderController` example implementation
   - Reconciliation logic:
     - ADDED: Set status to "processing", calculate totals
@@ -50,7 +50,7 @@ The Watch API and Controller Framework extends the dynamic API server with event
   - Updates storage (generating new events)
 
 #### Documentation
-- **WATCH_ARCHITECTURE.md** (500+ lines)
+- **WATCH_ARCHITECTURE.md**
   - Detailed explanation of Watch API
   - EventBus design and thread safety
   - Controller pattern and reconciliation
@@ -58,14 +58,14 @@ The Watch API and Controller Framework extends the dynamic API server with event
   - Production considerations
   - Debugging guide
 
-- **WATCH_DEMO.md** (400+ lines)
+- **WATCH_DEMO.md**
   - Step-by-step demonstration
   - Multiple terminal walkthrough
   - Event flow diagrams
   - Curl examples
   - Troubleshooting guide
 
-- **WATCH_IMPLEMENTATION.md** (this file)
+- **WATCH_IMPLEMENTATION.md**
   - Summary of changes
   - File descriptions
   - Key concepts
@@ -78,7 +78,7 @@ The Watch API and Controller Framework extends the dynamic API server with event
   - Another sample order
 
 #### Tests
-- **pkg/api/eventbus_test.go** (200+ lines)
+- **pkg/api/eventbus_test.go**
   - TestEventBusPublishSubscribe
   - TestEventBusMultipleSubscribers
   - TestEventBusDifferentResources
@@ -90,8 +90,8 @@ The Watch API and Controller Framework extends the dynamic API server with event
 ### Modified Files
 
 #### Core API
-- **pkg/api/event.go** - NEW
-- **pkg/api/eventbus.go** - NEW
+- **pkg/api/event.go**
+- **pkg/api/eventbus.go**
 - **pkg/api/storage.go**
   - Added `eventBus` field to MemoryStorage
   - Added `SetEventBus()` method
