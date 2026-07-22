@@ -658,10 +658,11 @@ PASS means your storage foundation works.
 
 ### Goal
 
-Build the two runtime tables that make the router generic: the **Registry**
-(which resources exist) and the **Scheme** (how to build an empty object for a
-resource by name). Both are consulted on every request, so both use
+Build the two runtime tables that make the router generic: the `Registry` (the
+set of registered resources) and the `Scheme` (how to build an empty object for
+a resource by name). Both are consulted on every request, so both use
 `sync.RWMutex` for cheap concurrent reads.
+
 
 ### The Registry
 
