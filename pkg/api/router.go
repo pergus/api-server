@@ -1,3 +1,4 @@
+// pkg/api/router.go
 package api
 
 import (
@@ -11,8 +12,6 @@ import (
 )
 
 // Router is the HTTP request dispatcher.
-//
-// THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
 //
 // Unlike typical REST servers that create routes for each resource at startup:
 //
@@ -72,6 +71,10 @@ func (r *Router) Setup() {
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
+
+// -----------------------------------------------------------------------------
+// Discovery + Route
+//
 
 // discovery handles GET /api
 // Returns all registered resources.
@@ -163,6 +166,10 @@ func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
+
+// -----------------------------------------------------------------------------
+// CRUD
+//
 
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
@@ -293,68 +300,29 @@ func (r *Router) delete(w http.ResponseWriter, _ *http.Request, resource Resourc
 	json.NewEncoder(w).Encode(response)
 }
 
-// watch handles GET /api/{resource}?watch=true
-// Streams events as they occur using Server-Sent Events (SSE).
-//
-// This is the Watch API in action:
-// 1. Client connects with ?watch=true
-// 2. Handler subscribes to the event bus for this resource
-// 3. Events are streamed to client as they occur
-// 4. No polling needed - truly event-driven
-func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
-	// Check if client supports Server-Sent Events (requires HTTP/1.1)
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusNotAcceptable)
-		return
+// extractIDFromObject pulls the ID from an object by marshalling to JSON.
+func extractIDFromObject(obj any) string {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		log.Printf("error marshalling object: %v", err)
+		return ""
 	}
 
-	// Subscribe to events for this resource
-	sub := r.eventBus.Subscribe(resource.Name())
-	defer r.eventBus.Unsubscribe(sub)
-
-	// Set headers for Server-Sent Events
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	// Notify client that watch is starting
-	fmt.Fprintf(w, ":connected to watch stream for %s\n\n", resource.Name())
-	flusher.Flush()
-
-	// Keep-alive ticker: send comment every 5 seconds to prevent timeout
-	keepAliveTicker := time.NewTicker(5 * time.Second)
-	defer keepAliveTicker.Stop()
-
-	// Stream events until client disconnects
-	for {
-		select {
-		case event := <-sub.Events:
-			// Serialize event to JSON
-			eventJSON, err := json.Marshal(event)
-			if err != nil {
-				log.Printf("error marshalling event: %v", err)
-				continue
-			}
-
-			// Send as SSE
-			fmt.Fprintf(w, "event: %s\n", event.Type)
-			fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
-			flusher.Flush()
-
-		case <-keepAliveTicker.C:
-			// Send keep-alive comment to prevent timeout
-			// SSE spec: lines starting with ':' are comments and ignored by clients
-			fmt.Fprintf(w, ":keep-alive\n\n")
-			flusher.Flush()
-
-		case <-req.Context().Done():
-			// Client disconnected
-			return
-		}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		log.Printf("error unmarshalling object: %v", err)
+		return ""
 	}
+
+	if id, ok := m["id"]; ok {
+		return fmt.Sprintf("%v", id)
+	}
+	return ""
 }
+
+// -----------------------------------------------------------------------------
+// CRDs
+//
 
 // routeCRD handles all /crds endpoints
 // Routes based on HTTP method to appropriate CRD handler
@@ -382,117 +350,6 @@ func (r *Router) routeCRD(w http.ResponseWriter, req *http.Request) {
 	} else {
 		http.Error(w, "not found", http.StatusNotFound)
 	}
-}
-
-// extractIDFromObject pulls the ID from an object by marshalling to JSON.
-func extractIDFromObject(obj any) string {
-	data, err := json.Marshal(obj)
-	if err != nil {
-		log.Printf("error marshalling object: %v", err)
-		return ""
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		log.Printf("error unmarshalling object: %v", err)
-		return ""
-	}
-
-	if id, ok := m["id"]; ok {
-		return fmt.Sprintf("%v", id)
-	}
-	return ""
-}
-
-// discoverAPIs handles GET /apis
-// Returns all API groups
-func (r *Router) discoverAPIs(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Collect unique groups from built-in and CRD resources
-	groups := make(map[string]bool)
-
-	// Add built-in resources to a default group
-	if len(r.registry.List()) > 0 {
-		groups["api.example.io"] = true
-	}
-
-	// Add CRD groups
-	for _, crd := range r.crdRegistry.ListCRDs() {
-		groups[crd.Group] = true
-	}
-
-	groupList := make([]string, 0, len(groups))
-	for g := range groups {
-		groupList = append(groupList, g)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"groups":    groupList,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	})
-}
-
-// discoverAPIPath handles GET /apis/{group} and /apis/{group}/{version}
-func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	path := strings.TrimPrefix(req.URL.Path, "/apis/")
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-
-	if len(parts) == 0 || parts[0] == "" {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-
-	group := parts[0]
-	version := ""
-	if len(parts) > 1 {
-		version = parts[1]
-	}
-
-	// Filter CRDs by group and version
-	resources := make([]map[string]interface{}, 0)
-	for _, crd := range r.crdRegistry.ListCRDs() {
-		if crd.Group == group && (version == "" || crd.Version == version) {
-			resources = append(resources, map[string]interface{}{
-				"name":    crd.Plural,
-				"kind":    crd.Kind,
-				"version": crd.Version,
-			})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"group":     group,
-		"version":   version,
-		"resources": resources,
-	})
-}
-
-// listPlugins handles GET /plugins
-// Returns information about loaded plugins (framework endpoint for future enhancement)
-func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// For now, return a simple response structure
-	// In the future, this will be connected to the plugin loader
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"plugins": []interface{}{},
-		"count":   0,
-	})
 }
 
 // createCRD handles POST /crds
@@ -633,4 +490,170 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// -----------------------------------------------------------------------------
+// API Discovery
+//
+
+// discoverAPIs handles GET /apis
+// Returns all API groups
+func (r *Router) discoverAPIs(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Collect unique groups from built-in and CRD resources
+	groups := make(map[string]bool)
+
+	// Add built-in resources to a default group
+	if len(r.registry.List()) > 0 {
+		groups["api.example.io"] = true
+	}
+
+	// Add CRD groups
+	for _, crd := range r.crdRegistry.ListCRDs() {
+		groups[crd.Group] = true
+	}
+
+	groupList := make([]string, 0, len(groups))
+	for g := range groups {
+		groupList = append(groupList, g)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"groups":    groupList,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// discoverAPIPath handles GET /apis/{group} and /apis/{group}/{version}
+func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(req.URL.Path, "/apis/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+
+	if len(parts) == 0 || parts[0] == "" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	group := parts[0]
+	version := ""
+	if len(parts) > 1 {
+		version = parts[1]
+	}
+
+	// Filter CRDs by group and version
+	resources := make([]map[string]interface{}, 0)
+	for _, crd := range r.crdRegistry.ListCRDs() {
+		if crd.Group == group && (version == "" || crd.Version == version) {
+			resources = append(resources, map[string]interface{}{
+				"name":    crd.Plural,
+				"kind":    crd.Kind,
+				"version": crd.Version,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"group":     group,
+		"version":   version,
+		"resources": resources,
+	})
+}
+
+// -----------------------------------------------------------------------------
+// Plugins
+//
+
+// listPlugins handles GET /plugins
+// Returns information about loaded plugins (framework endpoint for future enhancement)
+func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// For now, return a simple response structure
+	// In the future, this will be connected to the plugin loader
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"plugins": []interface{}{},
+		"count":   0,
+	})
+}
+
+// -----------------------------------------------------------------------------
+// Watch
+//
+
+// watch handles GET /api/{resource}?watch=true
+// Streams events as they occur using Server-Sent Events (SSE).
+//
+// This is the Watch API in action:
+// 1. Client connects with ?watch=true
+// 2. Handler subscribes to the event bus for this resource
+// 3. Events are streamed to client as they occur
+// 4. No polling needed - truly event-driven
+func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client supports Server-Sent Events (requires HTTP/1.1)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusNotAcceptable)
+		return
+	}
+
+	// Subscribe to events for this resource
+	sub := r.eventBus.Subscribe(resource.Name())
+	defer r.eventBus.Unsubscribe(sub)
+
+	// Set headers for Server-Sent Events
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Notify client that watch is starting
+	fmt.Fprintf(w, ":connected to watch stream for %s\n\n", resource.Name())
+	flusher.Flush()
+
+	// Keep-alive ticker: send comment every 5 seconds to prevent timeout
+	keepAliveTicker := time.NewTicker(5 * time.Second)
+	defer keepAliveTicker.Stop()
+
+	// Stream events until client disconnects
+	for {
+		select {
+		case event := <-sub.Events:
+			// Serialize event to JSON
+			eventJSON, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("error marshalling event: %v", err)
+				continue
+			}
+
+			// Send as SSE
+			fmt.Fprintf(w, "event: %s\n", event.Type)
+			fmt.Fprintf(w, "data: %s\n\n", string(eventJSON))
+			flusher.Flush()
+
+		case <-keepAliveTicker.C:
+			// Send keep-alive comment to prevent timeout
+			// SSE spec: lines starting with ':' are comments and ignored by clients
+			fmt.Fprintf(w, ":keep-alive\n\n")
+			flusher.Flush()
+
+		case <-req.Context().Done():
+			// Client disconnected
+			return
+		}
+	}
 }

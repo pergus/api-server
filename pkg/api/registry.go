@@ -1,3 +1,4 @@
+// pkg/api/registry.go
 package api
 
 import (

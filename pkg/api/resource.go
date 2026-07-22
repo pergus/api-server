@@ -1,3 +1,4 @@
+// pkg/api/resource.go
 package api
 
 // Resource defines the interface that all API resources must implement.

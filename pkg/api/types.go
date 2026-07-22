@@ -1,3 +1,5 @@
+// pkg/api/types.go
+//
 // Package api provides the core framework for a truly dynamic API server
 // that can have resources registered and unregistered at runtime without
 // rebuilding the HTTP router or restarting the server.
