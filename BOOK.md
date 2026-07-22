@@ -565,21 +565,26 @@ func (s *MemoryStorage) Delete(id string) error {
 // extractID pulls the ID from an object by marshalling to JSON.
 // This works for any type that has an "id" JSON field.
 func extractID(obj any) (string, error) {
+
+	// Marshal the object to its JSON representation.
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return "", fmt.Errorf("marshal error: %w", err)
 	}
 
+	// Unmarshal into a generic map for dynamic field lookup.
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return "", fmt.Errorf("unmarshal error: %w", err)
 	}
 
+	// Look up the "id" field.
 	idVal, exists := m["id"]
 	if !exists {
 		return "", fmt.Errorf("object missing 'id' field")
 	}
 
+	// Convert the ID to its string representation.
 	id := fmt.Sprintf("%v", idVal)
 	if id == "" || id == "<nil>" {
 		return "", fmt.Errorf("id field is empty or nil")
