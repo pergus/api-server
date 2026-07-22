@@ -2749,14 +2749,18 @@ conventions, the same client methods can communicate with it.
 **Listing 8.1 — `cmd/apictl/client.go` (core)**
 
 ```go
+// cmd/apictl/client.go
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	//"time" (Added in Chapter 14)
 )
 
 // Client communicates with the dynamic API server.
@@ -2767,23 +2771,29 @@ type Client struct {
 
 // NewClient creates a new client.
 func NewClient(baseURL string) *Client {
-	return &Client{baseURL: baseURL, http: &http.Client{}}
+	return &Client{
+		baseURL: baseURL,
+		http:    &http.Client{},
+	}
 }
 
-// GetAPIResources retrieves all available resource names via GET /api.
+// GetAPIResources retrieves all available resources.
 func (c *Client) GetAPIResources() ([]string, error) {
 	resp, err := c.get("/api")
 	if err != nil {
 		return nil, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
 	}
+
 	resources, ok := result["resources"].([]interface{})
 	if !ok {
 		return []string{}, nil
 	}
+
 	res := make([]string, 0, len(resources))
 	for _, r := range resources {
 		if s, ok := r.(string); ok {
@@ -2793,20 +2803,23 @@ func (c *Client) GetAPIResources() ([]string, error) {
 	return res, nil
 }
 
-// GetAPIs retrieves all API groups via GET /apis (Chapter 11).
+// GetAPIs retrieves all API groups.
 func (c *Client) GetAPIs() ([]string, error) {
 	resp, err := c.get("/apis")
 	if err != nil {
 		return nil, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
 	}
+
 	groups, ok := result["groups"].([]interface{})
 	if !ok {
 		return []string{}, nil
 	}
+
 	res := make([]string, 0, len(groups))
 	for _, g := range groups {
 		if s, ok := g.(string); ok {
@@ -2822,14 +2835,17 @@ func (c *Client) ListResources(resource string) ([]map[string]interface{}, error
 	if err != nil {
 		return nil, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
 	}
+
 	items, ok := result["items"].([]interface{})
 	if !ok {
 		return []map[string]interface{}{}, nil
 	}
+
 	res := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
 		if m, ok := item.(map[string]interface{}); ok {
@@ -2839,12 +2855,13 @@ func (c *Client) ListResources(resource string) ([]map[string]interface{}, error
 	return res, nil
 }
 
-// GetResource retrieves a specific object.
+// GetResource retrieves a specific resource.
 func (c *Client) GetResource(resource, id string) (map[string]interface{}, error) {
 	resp, err := c.get(fmt.Sprintf("/api/%s/%s", resource, id))
 	if err != nil {
 		return nil, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
@@ -2852,41 +2869,46 @@ func (c *Client) GetResource(resource, id string) (map[string]interface{}, error
 	return result, nil
 }
 
-// CreateResource POSTs a new object and returns its ID.
+// CreateResource creates a new resource.
 func (c *Client) CreateResource(resource string, obj map[string]interface{}) (string, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return "", err
 	}
+
 	resp, err := c.post(fmt.Sprintf("/api/%s", resource), data)
 	if err != nil {
 		return "", err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return "", err
 	}
+
 	if id, ok := result["id"].(string); ok {
 		return id, nil
 	}
 	return "", fmt.Errorf("no id in response")
 }
 
-// UpdateResource PUTs an object.
+// UpdateResource updates an existing resource.
 func (c *Client) UpdateResource(resource, id string, obj map[string]interface{}) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
 	}
+
 	_, err = c.put(fmt.Sprintf("/api/%s/%s", resource, id), data)
 	return err
 }
 
-// DeleteResource deletes an object.
+// DeleteResource deletes a resource.
 func (c *Client) DeleteResource(resource, id string) error {
 	_, err := c.delete(fmt.Sprintf("/api/%s/%s", resource, id))
 	return err
 }
+
 ```
 
 The second part of the file extends the client with operations that will become
@@ -2921,12 +2943,17 @@ takes place.
 **Listing 8.2 — `cmd/apictl/client.go` (CRD, plugins, HTTP plumbing)**
 
 ```go
-// CreateCRD POSTs a CRD definition (Chapter 10).
+// -----------------------------------------------------------------------------
+// CRDs
+//
+
+// CreateCRD creates a new CRD.
 func (c *Client) CreateCRD(crd map[string]interface{}) error {
 	data, err := json.Marshal(crd)
 	if err != nil {
 		return err
 	}
+
 	_, err = c.post("/crds", data)
 	return err
 }
@@ -2937,14 +2964,17 @@ func (c *Client) ListCRDs() ([]map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, err
 	}
+
 	items, ok := result["items"].([]interface{})
 	if !ok {
 		return []map[string]interface{}{}, nil
 	}
+
 	res := make([]map[string]interface{}, 0, len(items))
 	for _, item := range items {
 		if m, ok := item.(map[string]interface{}); ok {
@@ -2954,40 +2984,50 @@ func (c *Client) ListCRDs() ([]map[string]interface{}, error) {
 	return res, nil
 }
 
-// DeleteCRD deletes a CRD by full name.
+// DeleteCRD deletes a CRD.
 func (c *Client) DeleteCRD(crdName string) error {
 	_, err := c.delete(fmt.Sprintf("/crds/%s", crdName))
 	return err
 }
 
-// ListPlugins lists loaded plugins (Chapter 12).
+// -----------------------------------------------------------------------------
+// Plugins
+//
+
+// ListPlugins lists all loaded plugins.
 func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
 	resp, err := c.get("/plugins")
 	if err != nil {
 		return nil, 0, err
 	}
+
 	var result map[string]interface{}
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, 0, err
 	}
+
 	plugins, ok := result["plugins"].([]interface{})
 	if !ok {
 		return []map[string]interface{}{}, 0, nil
 	}
+
 	count := 0
 	if v, ok := result["count"].(float64); ok {
 		count = int(v)
 	}
+
 	res := make([]map[string]interface{}, 0, len(plugins))
-	for _, p := range plugins {
-		if m, ok := p.(map[string]interface{}); ok {
+	for _, plugin := range plugins {
+		if m, ok := plugin.(map[string]interface{}); ok {
 			res = append(res, m)
 		}
 	}
 	return res, count, nil
 }
 
+// -----------------------------------------------------------------------------
 // Helper methods
+//
 
 func (c *Client) get(path string) ([]byte, error) {
 	return c.request("GET", path, nil)
@@ -3010,14 +3050,17 @@ func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 	url := c.baseURL + path
 	var req *http.Request
 	var err error
+
 	if body != nil {
 		req, err = http.NewRequest(method, url, bytes.NewReader(body))
 	} else {
 		req, err = http.NewRequest(method, url, nil)
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
@@ -3030,6 +3073,7 @@ func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if resp.StatusCode >= 400 {
 		var errResp map[string]interface{}
 		if err := json.Unmarshal(respBody, &errResp); err == nil {
@@ -3039,8 +3083,10 @@ func (c *Client) request(method, path string, body []byte) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
+
 	return respBody, nil
 }
+
 ```
 
 In Chapter 14, this client will gain one more capability: the ability to watch
