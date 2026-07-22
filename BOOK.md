@@ -2594,6 +2594,7 @@ addition of new resources still requires no changes to the router or HTTP layer
 **Listing 7.4 — `cmd/api-server/main.go` (Chapter-7 version)**
 
 ```go
+// cmd/api-server/main.go
 package main
 
 import (
@@ -2658,8 +2659,8 @@ func main() {
 }
 ```
 
-We will add plugin loading (Chapter 12) and controller startup (Chapter 15) to this
-same file later.
+We will add Custom Resource Defitions (Chapter 10), plugin loading (Chapter 12)
+and controller startup (Chapter 15) to this same file later.
 
 ### Checkpoint
 
