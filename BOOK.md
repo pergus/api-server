@@ -2753,14 +2753,14 @@ conventions, the same client methods can communicate with it.
 package main
 
 import (
-	"bufio"
+	//"bufio"   (Added in Chapter 14)
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
-	//"time" (Added in Chapter 14)
+	//"strings" (Added in Chapter 14)
+	//"time"    (Added in Chapter 14)
 )
 
 // Client communicates with the dynamic API server.
