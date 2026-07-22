@@ -2594,7 +2594,7 @@ addition of new resources still requires no changes to the router or HTTP layer
 **Listing 7.4 — `cmd/api-server/main.go` (Chapter-7 version)**
 
 ```go
-// cmd/api-server/main.go
+// cmd/api-server/main.go - Chapter 7 version
 package main
 
 import (
