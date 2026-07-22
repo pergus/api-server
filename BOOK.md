@@ -4716,11 +4716,17 @@ generic handlers and storage interfaces.
 **Listing 10.3 — `pkg/api/router.go` (CRD handlers)**
 
 ```go
-// routeCRD dispatches all /crds endpoints.
+// -----------------------------------------------------------------------------
+// CRDs
+//
+
+// routeCRD handles all /crds endpoints
+// Routes based on HTTP method to appropriate CRD handler
 func (r *Router) routeCRD(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
+
 	if path == "/crds" || path == "/crds/" {
-		// /crds - list or create		
+		// /crds - list or create
 		switch req.Method {
 		case http.MethodGet:
 			r.listCRDs(w, req)
@@ -4881,6 +4887,7 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
 ```
 
 ### A CRD definition file
