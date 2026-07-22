@@ -1,6 +1,7 @@
 # Dynamic API Server
 
-A truly dynamic, runtime-extensible REST API server in Go that demonstrates how to achieve extensibility without server restarts or recompilation.
+A runtime-extensible REST API server in Go that demonstrates how to add new
+resources and functionality without restarting or recompiling the server.
 
 **Key Features:**
 - New API resources can be added while the server is running

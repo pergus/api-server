@@ -1,6 +1,6 @@
-# Building a Dynamic API Server in Go
+# Building an Extensible API Server in Go
 
-### Design and implement a runtime-extensible REST platform and its CLI, one working step at a time
+### Implement an extensible REST platform and CLI
 
 ---
 
