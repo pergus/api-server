@@ -4523,6 +4523,7 @@ types and resources that did not exist when the application was built.
 **Listing 10.2 — `pkg/api/dynamic.go`**
 
 ```go
+// pkg/api/dynamic.go
 package api
 
 import (
@@ -4610,7 +4611,6 @@ func (d *DynamicObject) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-
 // MarshalJSON implements custom JSON marshalling.
 // Returns a flat structure for backwards compatibility.
 func (d *DynamicObject) MarshalJSON() ([]byte, error) {
@@ -4657,12 +4657,15 @@ type DynamicResource struct {
 
 // NewDynamicResource creates a new dynamic resource for a CRD.
 func NewDynamicResource(crd *CRDDefinition) *DynamicResource {
-	return &DynamicResource{crd: crd, storage: NewMemoryStorage()}
+	return &DynamicResource{
+		crd:     crd,
+		storage: NewMemoryStorage(),
+	}
 }
 
 // Name returns the plural name of the resource.
-func (r *DynamicResource) Name() string { 
-	return r.crd.Plural 
+func (r *DynamicResource) Name() string {
+	return r.crd.Plural
 }
 
 // NewObject returns a new DynamicObject.
@@ -4684,6 +4687,7 @@ func (r *DynamicResource) Storage() Storage {
 func (r *DynamicResource) CRD() *CRDDefinition {
 	return r.crd
 }
+
 ```
 
 Because `DynamicObject` marshals to `{"id": ..., ...spec}`, the storage layer's
