@@ -2274,9 +2274,11 @@ func (s *Server) Stop(ctx context.Context) error {
 // Also attaches the event bus to the resource's storage so events are published.
 func (s *Server) RegisterResource(resource Resource) error {
 	// Attach event bus to storage if storage is MemoryStorage
+	/* Added in Chapter 13
 	if ms, ok := resource.Storage().(*MemoryStorage); ok {
 		ms.SetEventBus(s.eventBus, resource.Name())
 	}
+	*/
 
 	err := s.registry.Register(resource)
 	if err == nil {
