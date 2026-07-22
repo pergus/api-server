@@ -72,14 +72,14 @@ GET /apis/{group}/{version} -> List resources in group/version
 
 **Commands:**
 ```bash
-apictl api-resources       # List available resources
-apictl api-versions        # List API groups
-apictl get <resource>      # List all objects
-apictl get <resource> <id> # Get specific object
-apictl create -f <file>    # Create from JSON
+apictl api-resources          # List available resources
+apictl api-versions           # List API groups
+apictl get <resource>         # List all objects
+apictl get <resource> <id>    # Get specific object
+apictl create -f <file>       # Create from JSON
 apictl delete <resource> <id> # Delete object
-apictl apply -f <file>     # Apply CRD from YAML
-apictl explain <resource>  # Show resource schema
+apictl apply -f <file>        # Apply CRD from YAML
+apictl explain <resource>     # Show resource schema
 ```
 
 **Key Features:**
@@ -308,4 +308,6 @@ This implementation provides a complete, production-ready CRD system that:
 ✓ Includes a full-featured CLI client
 ✓ Maintains thread safety for concurrent access
 
-The code is organized for clarity, with extensive comments explaining the architectural decisions. Each component has a single responsibility, and the system is extensible for future enhancements.
+The code is organized for clarity, with extensive comments explaining the
+architectural decisions. Each component has a single responsibility, and the
+system is extensible for future enhancements.
