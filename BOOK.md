@@ -4805,7 +4805,7 @@ router can coordinate runtime resource creation.
 The event bus remains disabled because event publishing is introduced later and
 is not required for CRD registration.
 
-**Listing 10.3 — `pkg/api/router.go` (CRD registry integration)**
+**Listing 10.4 — `pkg/api/router.go` (CRD registry integration)**
 ```go
 type Router struct {
 	registry Registry
@@ -4849,7 +4849,7 @@ and object handling infrastructure as existing resources.
 If any step fails, previously completed steps are rolled back so that the server
 does not remain in a partially configured state.
 
-**Listing 10.4 — `pkg/api/router.go` (CRD handlers)**
+**Listing 10.5 — `pkg/api/router.go` (CRD handlers)**
 ```go
 // -----------------------------------------------------------------------------
 // CRDs
