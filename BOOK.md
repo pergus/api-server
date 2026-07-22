@@ -441,6 +441,16 @@ naturally belong without complicating the initial implementation.
 **Listing 3.3 — `pkg/api/storage.go` (methods)**
 
 ```go
+// SetEventBus attaches an event bus to this storage.
+// Events will be published when objects are created, updated, or deleted.
+// This must be called after NewMemoryStorage and before using the storage.
+/*
+func (s *MemoryStorage) SetEventBus(bus EventBus, resource string) {
+	s.eventBus = bus
+	s.resource = resource
+}
+*/
+
 // List returns a copy of all stored items.
 func (s *MemoryStorage) List() ([]any, error) {
 	s.mu.RLock()
@@ -465,7 +475,9 @@ func (s *MemoryStorage) Get(id string) (any, error) {
 	return item, nil
 }
 
-// Create stores a new item and publishes an ADDED event.
+// Create stores a new item.
+// Expects the item to have an "id" field in its JSON representation.
+// After storing, publishes an ADDED event if an event bus is attached.
 func (s *MemoryStorage) Create(obj any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -474,15 +486,29 @@ func (s *MemoryStorage) Create(obj any) error {
 	if err != nil {
 		return err
 	}
+
 	if _, exists := s.items[id]; exists {
 		return fmt.Errorf("already exists: %s", id)
 	}
+
 	s.items[id] = obj
 
+	// Publish ADDED event if event bus is attached
+	/*
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Added,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+	*/
 	return nil
 }
 
-// Update modifies an existing item and publishes a MODIFIED event.
+// Update modifies an existing item.
+// After updating, publishes a MODIFIED event if an event bus is attached.
 func (s *MemoryStorage) Update(id string, obj any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -490,44 +516,74 @@ func (s *MemoryStorage) Update(id string, obj any) error {
 	if _, exists := s.items[id]; !exists {
 		return fmt.Errorf("not found: %s", id)
 	}
+
 	s.items[id] = obj
 
+	// Publish MODIFIED event if event bus is attached
+	/*
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Modified,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+	*/
 	return nil
 }
 
-// Delete removes an item by ID and publishes a DELETED event with the last state.
+// Delete removes an item by ID.
+// Before deleting, publishes a DELETED event if an event bus is attached.
+// The event contains the last state of the object.
 func (s *MemoryStorage) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, exists := s.items[id]
+	obj, exists := s.items[id]
 	if !exists {
 		return fmt.Errorf("not found: %s", id)
 	}
+
 	delete(s.items, id)
 
+	// Publish DELETED event if event bus is attached
+	/*
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Deleted,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+	*/
 	return nil
 }
 
-// extractID pulls the "id" field from any object by round-tripping through JSON.
-// This works for any type that has an "id" JSON tag.
+// extractID pulls the ID from an object by marshalling to JSON.
+// This works for any type that has an "id" JSON field.
 func extractID(obj any) (string, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return "", fmt.Errorf("marshal error: %w", err)
 	}
+
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return "", fmt.Errorf("unmarshal error: %w", err)
 	}
+
 	idVal, exists := m["id"]
 	if !exists {
 		return "", fmt.Errorf("object missing 'id' field")
 	}
+
 	id := fmt.Sprintf("%v", idVal)
 	if id == "" || id == "<nil>" {
 		return "", fmt.Errorf("id field is empty or nil")
 	}
+
 	return id, nil
 }
 ```
