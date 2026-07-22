@@ -4448,9 +4448,10 @@ fields to be stored without requiring a predefined struct.
 
 The most important compatibility requirement is the object identifier. The
 storage layer and generic handlers expect resources to have an `id` value, but
-many API-style resources use the Kubernetes-inspired `metadata.name` convention
-instead. `DynamicObject` handles this difference by translating between the two
-formats.
+some API-style resources use a nested `metadata.name` convention instead.
+`DynamicObject` handles this difference by translating between the two formats,
+allowing different resource representations to work with the same storage and
+API infrastructure.
 
 When JSON enters the server, the custom `UnmarshalJSON` method checks whether
 the object contains a top-level `id` field. If it does, that value is moved into
