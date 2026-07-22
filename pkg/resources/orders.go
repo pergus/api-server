@@ -1,3 +1,4 @@
+// pkg/resources/orders.go
 package resources
 
 import (

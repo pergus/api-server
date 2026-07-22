@@ -1,3 +1,4 @@
+// pkg/resources/products.go
 package resources
 
 import (

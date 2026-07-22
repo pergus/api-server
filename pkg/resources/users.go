@@ -1,3 +1,4 @@
+// pkg/resources/users.go
 package resources
 
 import (
