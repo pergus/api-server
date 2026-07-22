@@ -1473,56 +1473,91 @@ factory function in the scheme.
 // CRUD
 //
 
-// list handles GET /api/{resource}. The ?watch=true branch is added in Chapter 14.
+// list handles GET /api/{resource}
+// Generic handler that works for ALL resources.
+// Supports ?watch=true for streaming events instead of listing.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client is requesting to watch events
+	if req.URL.Query().Get("watch") == "true" {
+		r.watch(w, req, resource)
+		return
+	}
+
+	// Normal list operation
 	objects, err := resource.Storage().List()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	response := ListResponse{
+		Items: objects,
+		Count: len(objects),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(ListResponse{Items: objects, Count: len(objects)})
+	json.NewEncoder(w).Encode(response)
 }
 
-// get handles GET /api/{resource}/{id}.
+// get handles GET /api/{resource}/{id}
+// Generic handler that works for ALL resources.
 func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
 	object, err := resource.Storage().Get(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(object)
 }
 
-// create handles POST /api/{resource}. The scheme creates an empty object so this
-// handler never needs to know the concrete type.
+// create handles POST /api/{resource}
+// Generic handler that works for ALL resources.
+// The key insight: we ask the Scheme to create an empty object.
+// We don't know what type it is, but we can unmarshal JSON into it.
 func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Read and limit request body
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
 
+	// Ask the Scheme to create an empty object
+	// This is the magic that allows generic handlers:
+	// The handler doesn't know it's creating a User, Product, or Order.
+	// It just asks for an empty object by the resource name.
 	obj, err := r.scheme.New(resource.Name())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Unmarshal incoming JSON into the empty object
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
 		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	// Store the object
 	if err := resource.Storage().Create(obj); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Extract ID for response
+	id := extractIDFromObject(obj)
+
+	response := CreatedResponse{
+		Message: fmt.Sprintf("%s created", resource.Name()),
+		ID:      id,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(CreatedResponse{
-		Message: fmt.Sprintf("%s created", resource.Name()),
-		ID:      extractIDFromObject(obj),
-	})
+	json.NewEncoder(w).Encode(response)
 }
 
-// update handles PUT /api/{resource}/{id}.
+// update handles PUT /api/{resource}/{id}
+// Generic handler that works for ALL resources.
 func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
@@ -1532,40 +1567,55 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
 		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
+
 	if err := resource.Storage().Update(id, obj); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	response := UpdatedResponse{
+		Message: fmt.Sprintf("%s updated", resource.Name()),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(UpdatedResponse{Message: fmt.Sprintf("%s updated", resource.Name())})
+	json.NewEncoder(w).Encode(response)
 }
 
-// delete handles DELETE /api/{resource}/{id}.
+// delete handles DELETE /api/{resource}/{id}
+// Generic handler that works for ALL resources.
 func (r *Router) delete(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
 	if err := resource.Storage().Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	response := DeletedResponse{
+		Message: fmt.Sprintf("%s deleted", resource.Name()),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(DeletedResponse{Message: fmt.Sprintf("%s deleted", resource.Name())})
+	json.NewEncoder(w).Encode(response)
 }
 
-// extractIDFromObject reads the "id" field from any object via JSON.
+// extractIDFromObject pulls the ID from an object by marshalling to JSON.
 func extractIDFromObject(obj any) string {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		log.Printf("error marshalling object: %v", err)
 		return ""
 	}
+
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		log.Printf("error unmarshalling object: %v", err)
 		return ""
 	}
+
 	if id, ok := m["id"]; ok {
 		return fmt.Sprintf("%v", id)
 	}
