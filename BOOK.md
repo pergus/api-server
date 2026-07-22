@@ -2386,9 +2386,16 @@ Everything else — routing, CRUD operations, discovery, and JSON handling — i
 already handled by the framework.
 
 
+The first resource implementation defines the `User` resource. This type
+represents user data exposed through the API, while `UserResource` connects the
+resource to its storage layer and provides the methods required by the resource
+framework. The constructor initializes an in-memory storage backend, which keeps
+this example self-contained.
+
 **Listing 7.1 — `pkg/resources/users.go`**
 
 ```go
+// pkg/resources/users.go
 package resources
 
 import (
@@ -2398,7 +2405,7 @@ import (
 // User is a sample resource type.
 type User struct {
 	ID       string `json:"id"`
-	Name     string `json:"name"`	
+	Name     string `json:"name"`
 	Email    string `json:"email"`
 	IsActive bool   `json:"is_active"`
 }
@@ -2432,9 +2439,16 @@ func (r *UserResource) Storage() api.Storage {
 
 ```
 
+The product resource follows the same pattern but models a different domain
+object. It demonstrates how additional fields can be introduced without changing
+the resource infrastructure. The `ProductResource` type delegates persistence
+concerns to the storage abstraction while keeping the resource definition
+focused on API behavior.
+
 **Listing 7.2 — `pkg/resources/products.go`**
 
 ```go
+// pkg/resources/products.go
 package resources
 
 import (
@@ -2479,9 +2493,16 @@ func (r *ProductResource) Storage() api.Storage {
 
 ```
 
+The order resource illustrates a resource with relationships to other resources.
+An order references a user through `UserID` and can contain multiple products
+through `ProductIDs`. Despite these relationships, it uses the same resource
+contract and storage abstraction as the previous examples.
+
+
 **Listing 7.3 — `pkg/resources/orders.go`**
 
 ```go
+// pkg/resources/orders.go
 package resources
 
 import (
