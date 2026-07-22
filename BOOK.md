@@ -3262,31 +3262,15 @@ func cmdAPIResources(c *Client) {
 	w.Flush()
 }
 
-// cmdAPIVersions lists all API versions
-func cmdAPIVersions(c *Client) {
-	groups, err := c.GetAPIs()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(groups) == 0 {
-		fmt.Println("No API groups found")
-		return
-	}
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "GROUP")
-	for _, g := range groups {
-		fmt.Fprintf(w, "%s\n", g)
-	}
-	w.Flush()
-}
 
 
 // These commands are placeholders for functionality introduced in later
 // chapters. They allow the CLI entrypoint to compile while keeping the final
 // command structure visible from the beginning.
+
+func cmdAPIVersions(c *Client) {
+	fmt.Println("api-versions command will be implemented in Chapter 9") 
+}
 
 func cmdPlugins(c *Client) {
 	fmt.Println("plugins command will be implemented in Chapter 9") 
