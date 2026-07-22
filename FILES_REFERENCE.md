@@ -17,49 +17,49 @@ Complete index of all files in the extended dynamic API server project.
 ### API Framework
 
 #### Generic Routing
-- **`pkg/api/router.go`** (~350 lines) - HTTP request dispatcher
+- **`pkg/api/router.go`** - HTTP request dispatcher
   - Generic handlers (list, get, create, update, delete)
   - Discovery endpoints (/api, /apis)
   - CRD management endpoints (/crds)
   - API path discovery endpoints
 
 #### Resource Management
-- **`pkg/api/registry.go`** (~150 lines) - Thread-safe resource registry
+- **`pkg/api/registry.go`** - Thread-safe resource registry
   - Register/unregister resources at runtime
   - Lookup by name (called on every request)
   - List all registered resources
 
-- **`pkg/api/resource.go`** (~30 lines) - Resource interface definition
+- **`pkg/api/resource.go`** - Resource interface definition
   - Name() - Resource identifier
   - NewObject() - Object factory
   - Storage() - Persistence layer
 
 #### Type Factory System
-- **`pkg/api/scheme.go`** (~100 lines) - Type factory registry
+- **`pkg/api/scheme.go`** - Type factory registry
   - Register type constructors by name
   - Create objects without importing types
   - Thread-safe read/write access
 
 #### Storage Interface
-- **`pkg/api/storage.go`** (~150 lines) - Abstract persistence layer
+- **`pkg/api/storage.go`** - Abstract persistence layer
   - MemoryStorage implementation
   - List, Get, Create, Update, Delete operations
   - ID extraction from objects
 
 #### Server Configuration
-- **`pkg/api/server.go`** (~120 lines) - HTTP server wrapper
+- **`pkg/api/server.go`** - HTTP server wrapper
   - Registry and Scheme accessors
   - CRDRegistry accessor
   - Startup and shutdown management
 
 #### Common Types
-- **`pkg/api/types.go`** (~60 lines) - Shared response types
+- **`pkg/api/types.go`** - Shared response types
   - ListResponse, ErrorResponse
   - DiscoveryResponse
   - RequestTiming
 
 #### Middleware
-- **`pkg/api/middleware.go`** (~100 lines) - HTTP middleware
+- **`pkg/api/middleware.go`** - HTTP middleware
   - LoggingMiddleware, CORSMiddleware, RecoveryMiddleware, TimingMiddleware
   - Middleware chaining support
 
@@ -81,7 +81,7 @@ Complete index of all files in the extended dynamic API server project.
   - Keeps connection alive with keep-alive ticker (5 second interval)
   - SSE formatted event streaming
 
-## Controller Framework Files (NEW)
+## Controller Framework Files
 
 - **`pkg/controllers/controller.go`** - Controller interface
   - Name(), Resource(), Reconcile(Event), Run(ctx) methods
@@ -101,14 +101,14 @@ Complete index of all files in the extended dynamic API server project.
 ## CRD System Files (NEW)
 
 ### CRD Definitions and Management
-- **`pkg/api/crd.go`** (~140 lines) - Custom Resource Definition system
+- **`pkg/api/crd.go`** - Custom Resource Definition system
   - CRDDefinition struct
   - CRDRegistry interface and implementation
   - Thread-safe CRD storage
   - Validation and naming conventions
 
 ### Dynamic Objects
-- **`pkg/api/dynamic.go`** (~180 lines) - Generic object representation
+- **`pkg/api/dynamic.go`** - Generic object representation
   - DynamicObject struct for schema-less data
   - DynamicResource wrapper for CRDs
   - Custom JSON marshalling/unmarshalling
@@ -116,18 +116,18 @@ Complete index of all files in the extended dynamic API server project.
 
 ## Built-in Resources
 
-- **`pkg/resources/users.go`** (~40 lines) - User resource
-- **`pkg/resources/products.go`** (~40 lines) - Product resource
-- **`pkg/resources/orders.go`** (~40 lines) - Order resource
+- **`pkg/resources/users.go`** - User resource
+- **`pkg/resources/products.go`** - Product resource
+- **`pkg/resources/orders.go`** - Order resource
 
 ## Plugin System
 
-- **`pkg/plugins/interface.go`** (~30 lines) - Plugin interface
-- **`pkg/plugins/loader.go`** (~200 lines) - Plugin loading and watching
-- **`plugins/invoices/main.go`** (~130 lines) - Example invoice plugin
+- **`pkg/plugins/interface.go`** - Plugin interface
+- **`pkg/plugins/loader.go`** - Plugin loading and watching
+- **`plugins/invoices/main.go`** - Example invoice plugin
 - **`plugins/build.sh`** - Script to build all plugins
 
-## apictl Client (NEW)
+## apictl Client
 
 ### Client Implementation
 - **`cmd/apictl/main.go`** - CLI entry point and help
@@ -167,33 +167,29 @@ Complete index of all files in the extended dynamic API server project.
   - Demonstrates JSON format
   - Ready to use with create command
 
-- **`examples/DEMO.md`** (~200 lines) - Detailed demonstration guide
-  - Step-by-step walkthrough
-  - All features explained
-  - How it works sections
 
 ## Documentation
 
 ### Quick References
-- **`QUICKSTART.md`** (~120 lines) - 5-minute getting started
+- **`QUICKSTART.md`** - 5-minute getting started
   - Build instructions
   - Demo sequence
   - Key concepts
   - Next steps
 
-- **`IMPLEMENTATION_SUMMARY.md`** (~300 lines) - Summary of changes
+- **`IMPLEMENTATION_SUMMARY.md`** - Summary of changes
   - What was added
   - How features work
   - Educational value
   - Architecture diagrams
 
 ### Architecture Documentation
-- **`ARCHITECTURE.md`** (~280 lines) - Core framework architecture
+- **`ARCHITECTURE.md`** - Core framework architecture
   - Problem and solution
   - Component architecture
   - Design patterns
 
-- **`CRD_ARCHITECTURE.md`** (~280 lines) - CRD system deep dive
+- **`CRD_ARCHITECTURE.md`** - CRD system deep dive
   - CRD system components
   - Lifecycle of CRDs
   - API discovery design
@@ -202,14 +198,19 @@ Complete index of all files in the extended dynamic API server project.
   - Performance characteristics
 
 ### Build and Setup
-- **`BUILD.md`** (~300 lines) - Complete build instructions
+- **`BUILD.md`** - Complete build instructions
   - Build procedures
   - Running examples
   - Testing via curl
   - Using apitcl client
   - Troubleshooting
 
-- **`README.md`** (~470 lines) - Main project documentation
+- **`DEMO.md`** - Detailed demonstration guide
+  - Step-by-step walkthrough
+  - All features explained
+  - How it works sections
+
+- **`README.md`** - Main project documentation
   - Overview
   - Quick start (both CRD and plugin approaches)
   - Using the API
@@ -334,8 +335,7 @@ api-server/
 │
 ├── examples/
 │   ├── invoice-crd.yaml               (CRD example in YAML)
-│   ├── invoice-1.json                 (Object example in JSON)
-│   └── DEMO.md                        (Detailed demonstration)
+│   └── invoice-1.json                 (Object example in JSON)
 │
 ├── Makefile                           (Build automation)
 ├── go.mod                             (Go module definition)
@@ -343,6 +343,8 @@ api-server/
 ├── README.md                          (Main project documentation)
 ├── BUILD.md                           (Build and development guide)
 ├── QUICKSTART.md                      (Quick start guide)
+├── BOOK.md                            (A book describing the implementation)
+├── DEMO.md                            (Detailed demonstration)
 ├── ARCHITECTURE.md                    (Core architecture explanation)
 ├── CRD_ARCHITECTURE.md                (CRD system deep dive)
 ├── WATCH_ARCHITECTURE.md              (Watch API & event system)
@@ -371,7 +373,7 @@ Do NOT update for:
 2. **For deep dive:** Read CRD_ARCHITECTURE.md
 3. **For building:** Read BUILD.md
 4. **For understanding architecture:** Read ARCHITECTURE.md
-5. **For implementation details:** Read IMPLEMENTATION_SUMMARY.md
+5. **For implementation details:** Read IMPLEMENTATION_SUMMARY.md or BOOK.md
 6. **For running demo:** Execute `./demo.sh`
 
 ## Highlighted Files
