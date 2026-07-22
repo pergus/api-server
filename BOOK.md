@@ -5345,17 +5345,23 @@ if err := server.CRDRegistry().RegisterCRD(orderCRD); err != nil {
 ```
 
 
-After this registration, the API server has both the executable resource and its descriptive schema.
+After this registration, the API server has both the executable resource and its
+descriptive schema.
 
 This approach keeps the CRD registry useful for two different scenarios:
 
 * Dynamically created resources use a CRD definition to create the resource itself.
 * Built-in resources use a CRD definition to describe an existing resource.
 
-The result is a unified discovery model. Clients do not need to know whether a resource was created from a runtime definition or compiled into the application. Both appear as registered resources with metadata describing their API group, version, kind, plural name, and schema.
+The result is a unified discovery model. Clients do not need to know whether a
+resource was created from a runtime definition or compiled into the application.
+Both appear as registered resources with metadata describing their API group,
+version, kind, plural name, and schema.
 
-This also provides a foundation for future features such as API documentation, validation, client generation, and schema discovery. The server can expose information about every available resource through one consistent mechanism, regardless of how that resource was created.
-
+This also provides a foundation for future features such as API documentation,
+validation, client generation, and schema discovery. The server can expose
+information about every available resource through one consistent mechanism,
+regardless of how that resource was created.
 
 
 After these changes, the server can create new resource types at runtime.
@@ -5504,6 +5510,9 @@ And a sample object:
 ```
 
 ### Checkpoint
+
+Delete the pkg/api/router_test.go since this is not needed anymore.
+Rebuild the server and client.
 
 With the server running:
 
