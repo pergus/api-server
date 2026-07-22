@@ -247,7 +247,7 @@ Your `go.mod` should look like this:
 ```go
 module github.com/pergus/api-server
 
-go 1.21
+go 1.26.5
 
 require gopkg.in/yaml.v2 v2.4.0
 ```
@@ -269,10 +269,11 @@ mkdir -p cmd/api-server cmd/apictl \
 
 ```bash
 go build ./...
+go: warning: "./..." matched no packages
 ```
 
-This succeeds (it compiles zero packages so far) and confirms your module is set
-up. You now have a skeleton ready to fill in.
+This succeeds with a warning but confirms your module is set up. You now have a
+skeleton ready to fill in.
 
 ---
 
