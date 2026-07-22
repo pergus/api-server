@@ -4696,8 +4696,22 @@ The dynamic type slots seamlessly into all the generic machinery.
 
 ### CRD routes
 
-Now the router methods that Chapter 5 deferred. `routeCRD` dispatches `/crds`
-endpoints; `createCRD` performs the three-way registration.
+The next step is to connect CRD support to the HTTP layer. Earlier chapters
+introduced the router structure but intentionally deferred the CRD-specific
+routes until the underlying registry and resource implementation were available.
+Now that those pieces exist, the router can expose endpoints for creating,
+listing, and deleting CRDs.
+
+The `routeCRD` method handles requests under the `/crds` path and dispatches them to
+the appropriate operation based on the HTTP method and request path. The
+`createCRD` method performs the registration workflow: it validates the submitted
+definition, stores it in the CRD registry, creates a dynamic resource backed by
+the new definition, and makes that resource available through the API server.
+
+This three-step process is what allows a new resource type to become available
+at runtime. Once registration succeeds, the server can treat the dynamically
+created resource in the same way as built-in resources, using the existing
+generic handlers and storage interfaces.
 
 **Listing 10.3 — `pkg/api/router.go` (CRD handlers)**
 
