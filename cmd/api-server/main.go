@@ -1,3 +1,5 @@
+// cmd/api-server/main.go
+//
 // Command server starts the dynamic API server.
 //
 // This server demonstrates true runtime extensibility:
