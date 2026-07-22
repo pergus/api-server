@@ -62,8 +62,8 @@ type CRDRegistry interface {
 	FindByPlural(plural string) (*CRDDefinition, bool)
 }
 
-// SimpleCRDRegistry implements CRDRegistry.
-type SimpleCRDRegistry struct {
+// CRDManager implements CRDRegistry.
+type CRDManager struct {
 	mu    sync.RWMutex
 	crds  map[string]*CRDDefinition // fullName -> CRD
 	byKey map[string]string         // plural -> fullName (for fast lookup)
@@ -71,14 +71,14 @@ type SimpleCRDRegistry struct {
 
 // NewCRDRegistry creates a new CRD registry.
 func NewCRDRegistry() CRDRegistry {
-	return &SimpleCRDRegistry{
+	return &CRDManager{
 		crds:  make(map[string]*CRDDefinition),
 		byKey: make(map[string]string),
 	}
 }
 
 // RegisterCRD registers a new CRD.
-func (r *SimpleCRDRegistry) RegisterCRD(crd *CRDDefinition) error {
+func (r *CRDManager) RegisterCRD(crd *CRDDefinition) error {
 	if err := crd.Validate(); err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func (r *SimpleCRDRegistry) RegisterCRD(crd *CRDDefinition) error {
 }
 
 // UnregisterCRD removes a CRD.
-func (r *SimpleCRDRegistry) UnregisterCRD(fullName string) error {
+func (r *CRDManager) UnregisterCRD(fullName string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -112,7 +112,7 @@ func (r *SimpleCRDRegistry) UnregisterCRD(fullName string) error {
 }
 
 // GetCRD retrieves a CRD by its full name.
-func (r *SimpleCRDRegistry) GetCRD(fullName string) (*CRDDefinition, bool) {
+func (r *CRDManager) GetCRD(fullName string) (*CRDDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -121,7 +121,7 @@ func (r *SimpleCRDRegistry) GetCRD(fullName string) (*CRDDefinition, bool) {
 }
 
 // ListCRDs returns all registered CRDs in sorted order.
-func (r *SimpleCRDRegistry) ListCRDs() []*CRDDefinition {
+func (r *CRDManager) ListCRDs() []*CRDDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -133,7 +133,7 @@ func (r *SimpleCRDRegistry) ListCRDs() []*CRDDefinition {
 }
 
 // FindByPlural finds a CRD by its plural name.
-func (r *SimpleCRDRegistry) FindByPlural(plural string) (*CRDDefinition, bool) {
+func (r *CRDManager) FindByPlural(plural string) (*CRDDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
