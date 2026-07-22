@@ -974,6 +974,11 @@ func (s *SimpleScheme) Has(name string) bool {
 
 ```
 
+The registry answers one simple question: "Is this resource available, and where
+can I find its data?" The scheme answers another: "How do I create an empty
+object of this type so I can fill it with incoming data?" Together, they give a
+single handler everything it needs to work with any resource in the system.
+
 **Figure 4.1 — Registry and Scheme, side by side**
 
 ```mermaid
@@ -989,11 +994,6 @@ flowchart TB
     REQ[Request for 'users'] --> Registry
     REQ --> Scheme
 ```
-
-The registry answers one simple question: "Is this resource available, and where
-can I find its data?" The scheme answers another: "How do I create an empty
-object of this type so I can fill it with incoming data?" Together, they give a
-single handler everything it needs to work with any resource in the system.
 
 For example, when a request arrives for `users`, the handler does not need to
 know what a `User` object looks like or where users are stored. It asks the
