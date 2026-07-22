@@ -1182,6 +1182,7 @@ dynamic design.
 **Listing 5.2 — `pkg/api/router.go` (type, constructor, Setup, ServeHTTP)**
 
 ```go
+// pkg/api/router.go
 package api
 
 import (
@@ -1194,36 +1195,67 @@ import (
 	"time"
 )
 
-// Router is the HTTP request dispatcher and the key to dynamic extensibility.
+// Router is the HTTP request dispatcher.
 //
-// Unlike servers that register per-resource routes at startup, this router
-// registers only generic routes and determines the resource at request time.
+// THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
+//
+//	GET /users, POST /users, GET /users/{id}, etc.
+//
+// This router creates only GENERIC routes that determine the resource at runtime:
+//
+//	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
+//
+// Every request:
+// 1. Extracts the resource name from the URL
+// 2. Looks it up in the registry (which may have been updated while running)
+// 3. Dispatches to ONE generic handler
+//
+// The handlers never know about specific resources. They work through:
+// - The Resource interface
+// - The Storage interface
+// - The Scheme (for object creation)
+//
+// This means new resources are immediately available after registration—
+// no router rebuild, no server restart, no HTTP listener restart.
 type Router struct {
 	registry    Registry
 	scheme      Scheme
+	crdRegistry CRDRegistry
+	eventBus    EventBus
 	mux         *http.ServeMux
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme ) *Router {
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
+		crdRegistry: crdRegistry,
+		eventBus:    eventBus,
 		mux:         http.NewServeMux(),
 	}
 }
 
-// Setup registers the generic routes ONCE. They never change, even as resources
-// are added or removed at runtime.
+// Setup registers the generic routes.
+// These routes are created ONCE and never change, even when new resources are added.
 func (r *Router) Setup() {
-	r.mux.HandleFunc("/api", r.discovery)         // list resources
-	r.mux.HandleFunc("/", r.route)                // everything else
+	// Discovery endpoints
+	r.mux.HandleFunc("/api", r.discovery)
+	r.mux.HandleFunc("/apis", r.discoverAPIs)
+	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
+
+	// Plugin endpoint
+	r.mux.HandleFunc("/plugins", r.listPlugins)
+
+	// Catch-all handler for all resource and CRD operations
+	r.mux.HandleFunc("/", r.route)
 }
 
 // ServeHTTP makes Router satisfy http.Handler.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
+
 ```
 
 
@@ -1283,53 +1315,76 @@ resource-specific routes or handlers.
 **Listing 5.3 — `pkg/api/router.go` (discovery + route)**
 
 ```go
-// discovery handles GET /api and lists all registered resources.
+// -----------------------------------------------------------------------------
+// Discovery + Route
+//
+
+// discovery handles GET /api
+// Returns all registered resources.
+// This endpoint updates dynamically as resources are registered.
 func (r *Router) discovery(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	response := DiscoveryResponse{
 		Resources: r.registry.Names(),
 		Time:      time.Now().UTC().Format(time.RFC3339),
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-// route is the single dispatcher for all resource (and CRD) requests.
+// route is the main request dispatcher.
+// This single handler routes ALL resource and CRD requests.
 func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
+	// Handle /crds endpoints
+	if strings.HasPrefix(path, "/crds") {
+		r.routeCRD(w, req)
+		return
+	}
+
+	// Handle /api/{resource} endpoints
 	if !strings.HasPrefix(path, "/api/") {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
-	// Split the path after /api/ : "users/alice" -> ["users", "alice"].
+	// Remove /api/ prefix and split
 	parts := strings.Split(strings.TrimPrefix(path, "/api/"), "/")
 	if len(parts) < 1 || parts[0] == "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+
 	resourceName := parts[0]
 
-	// The heart of the design: a live registry lookup on every request.
+	// Look up resource in registry
+	// This happens on EVERY request, which is fine because Lookup uses a read lock.
 	resource, ok := r.registry.Lookup(resourceName)
 	if !ok {
 		http.Error(w, fmt.Sprintf("resource %q not found", resourceName), http.StatusNotFound)
 		return
 	}
 
+	// Determine which handler to call based on HTTP method and URL structure
 	if len(parts) == 1 {
-		r.routeListOrCreate(w, req, resource) // /api/{resource}
+		// /api/{resource} - list or create
+		r.routeListOrCreate(w, req, resource)
 	} else if len(parts) == 2 && parts[1] != "" {
-		r.routeItemOp(w, req, resource, parts[1]) // /api/{resource}/{id}
+		// /api/{resource}/{id} - get, update, or delete
+		id := parts[1]
+		r.routeItemOp(w, req, resource, id)
 	} else {
 		http.Error(w, "not found", http.StatusNotFound)
 	}
 }
 
+// routeListOrCreate handles list (GET) or create (POST) operations.
 func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, resource Resource) {
 	switch req.Method {
 	case http.MethodGet:
@@ -1341,6 +1396,7 @@ func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, res
 	}
 }
 
+// routeItemOp handles get, update, or delete operations on a specific item.
 func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
 	switch req.Method {
 	case http.MethodGet:
@@ -1410,6 +1466,10 @@ factory function in the scheme.
 **Listing 5.4 — `pkg/api/router.go` (CRUD handlers)**
 
 ```go
+// -----------------------------------------------------------------------------
+// CRUD
+//
+
 // list handles GET /api/{resource}. The ?watch=true branch is added in Chapter 14.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
 	objects, err := resource.Storage().List()
@@ -1522,6 +1582,7 @@ The following test proves the important architectural claim from Chapter 5:
 
 **Listing 5.5 — `pkg/api/router_test.go` (Router API test)**
 ```go
+// pkg/api/router_test.go
 package api
 
 import (
