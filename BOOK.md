@@ -540,7 +540,8 @@ func (s *MemoryStorage) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	obj, exists := s.items[id]
+	//obj, exists := s.items[id] (Added in Chapter 13)
+	_, exists := s.items[id]
 	if !exists {
 		return fmt.Errorf("not found: %s", id)
 	}
