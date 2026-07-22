@@ -4492,9 +4492,11 @@ and kind. The storage provides the runtime data operations needed by the generic
 handlers.
 
 `NewDynamicResource` creates a resource from a CRD definition and assigns it a
-memory storage backend. Later chapters can replace or extend this storage
-behavior, but the important idea is that the resource lifecycle is identical
-whether the type was compiled into the server or created dynamically.
+storage backend. This keeps dynamically created resources consistent with
+built-in resources by giving them the same lifecycle and behavior through the
+existing resource interfaces. The important idea is that a resource behaves the
+same way whether it was compiled into the server or registered dynamically at
+runtime.
 
 The `Name` method returns the plural resource name from the CRD. This is the
 name used by API paths and discovery. For example, a CRD defining an `Invoice`
