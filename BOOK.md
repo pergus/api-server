@@ -7104,7 +7104,7 @@ Build the server and client.
 ```bash
 mkdir bin
 go build -v -o bin/api-server ./cmd/api-server
-go build -v -o bin/apiclt ./cmd/apiclt
+go build -v -o bin/apiclt ./cmd/apictl
 ```
 
 Build the plugins
