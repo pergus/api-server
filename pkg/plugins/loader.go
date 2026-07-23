@@ -1,3 +1,5 @@
+// pkg/plugins/loader.go
+
 package plugins
 
 import (
@@ -32,10 +34,10 @@ type Loader struct {
 
 // LoadedPlugin tracks a loaded plugin.
 type LoadedPlugin struct {
-	Plugin  Plugin
-	Path    string
-	Loaded  time.Time
-	Handle  *plugin.Plugin
+	Plugin Plugin
+	Path   string
+	Loaded time.Time
+	Handle *plugin.Plugin
 }
 
 // NewLoader creates a plugin loader.
