@@ -7100,43 +7100,43 @@ echo "All plugins built successfully!"
 
 ### Checkpoint
 
-# Build the server and client binaries.
 ```bash
+# Build the server and client binaries.
 mkdir bin
 go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apiclt ./cmd/apiclt
 ```
 
-# Build the example plugins.
 ```bash
+# Build the example plugins.
 chmod +x build_plugins.sh
 ./build_plugins.sh
 ```
 
+```bash
 # Start the API server.
 # The server must be started from the directory that contains the plugins directory
 # so that the plugin loader can discover the compiled .so files.
-```bash
 cd bin
 ./api-server
 ```
 
+```bash
 # In another terminal, wait a few seconds for the plugin watcher to load the plugin.
 # The server log should show:
 # Successfully loaded plugin: invoices
 
 # Verify that the plugin is loaded.
-```bash
 ./apiclt plugins
 ```
 
-# Verify that the new resource provided by the plugin is available.
 ```bash
+# Verify that the new resource provided by the plugin is available.
 ./apiclt api-resources
 ```
 
-# Create an invoice using the dynamically registered resource.
 ```bash
+# Create an invoice using the dynamically registered resource.
 ./apiclt create -f examples/invoice-1.json
 ```
 
