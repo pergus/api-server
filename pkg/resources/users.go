@@ -1,4 +1,11 @@
 // pkg/resources/users.go
+//
+// This file defines the User resource type and its associated Resource implementation.
+// The User resource represents a user in an e-commerce system, with fields for ID,
+// name, email, and active status. The UserResource struct implements the Resource
+// interface, providing methods to create new User objects and manage their storage
+// using an in-memory storage backend.
+
 package resources
 
 import (

@@ -1,3 +1,11 @@
+// pkg/controllers/controller.go
+//
+// This file defines the Controller interface, which represents a reconciliation controller
+// in the dynamic API framework. Controllers are responsible for watching events related to
+// specific resources and performing business logic to reconcile the current state with the
+// desired state. This decouples business logic from HTTP request handling, allowing controllers
+// to operate independently of the API server's request lifecycle.
+
 package controllers
 
 import (

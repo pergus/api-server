@@ -1,4 +1,11 @@
 // pkg/api/registry.go
+//
+// This file defines the Registry interface and its implementation for managing
+// API resources in the dynamic API server. The Registry is responsible for
+// keeping track of all known resources, allowing for registration, unregistration,
+// lookup, and listing of resources. It is thread-safe and supports concurrent
+// access, enabling dynamic resource management at runtime.
+
 package api
 
 import (

@@ -1,3 +1,12 @@
+// pkg/controllers/manager.go
+//
+// This file implements the ControllerManager, which manages the lifecycle of
+// multiple controllers. The manager is responsible for registering controllers,
+// starting them in separate goroutines, and handling subscriptions to the event
+// bus. It ensures that controllers run concurrently, events are delivered
+// asynchronously, and each controller sees all events for its resource. The
+// manager also supports graceful shutdown of all controllers.
+
 package controllers
 
 import (

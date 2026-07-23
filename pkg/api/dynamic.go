@@ -1,4 +1,12 @@
 // pkg/api/dynamic.go
+//
+// This file defines the structures and interfaces for managing dynamic API
+// resources in the API server. Dynamic resources are those that are defined at
+// runtime via Custom Resource Definitions (CRDs). The DynamicObject struct
+// represents a generic API-like object that can hold arbitrary JSON data, and
+// the DynamicResource struct provides an implementation of the Resource
+// interface for CRD-based resources.
+
 package api
 
 import (

@@ -1,3 +1,11 @@
+// pkg/api/event.go
+//
+// This file defines the structures and interfaces for managing events in the
+// dynamic API server. Events represent changes to resources (e.g., creation,
+// modification, deletion) and are used to notify subscribers (watchers) of
+// these changes. The EventBus interface provides a mechanism for publishing
+// events and managing subscriptions.
+
 package api
 
 import "time"

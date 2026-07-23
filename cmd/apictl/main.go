@@ -1,4 +1,12 @@
 // cmd/apictl/main.go
+//
+// This file contains the main entry point for the apictl command-line interface
+// (CLI). It parses command-line arguments, initializes the API client, and
+// dispatches commands to the appropriate handlers. The CLI allows users to
+// interact with the dynamic API server, providing functionality to list
+// resources, retrieve specific resources, create or delete resources, manage
+// plugins, and more.
+
 package main
 
 import (

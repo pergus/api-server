@@ -1,4 +1,11 @@
 // pkg/api/storage.go
+//
+// This file defines the Storage interface and an in-memory implementation (MemoryStorage).
+// The Storage interface abstracts the persistence layer for resources, allowing
+// different backends (in-memory, SQL, NoSQL, etc.) to be used interchangeably.
+// MemoryStorage is a simple thread-safe in-memory storage that supports basic CRUD operations
+// and integrates with the EventBus to publish events on resource changes.
+
 package api
 
 import (

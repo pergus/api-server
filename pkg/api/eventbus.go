@@ -1,3 +1,12 @@
+// pkg/api/eventbus.go
+//
+// This file defines the EventBus interface and its implementation for managing
+// events in the dynamic API server. The EventBus provides a publish/subscribe
+// mechanism for resource events, allowing decoupled communication between
+// storage, watchers, and controllers. The SimpleEventBus implementation uses
+// goroutines and channels to ensure non-blocking event distribution and safe
+// concurrent access.
+
 package api
 
 import (

@@ -1,4 +1,12 @@
 // pkg/api/resource.go
+//
+// This file defines the Resource interface, which is the contract that all API
+// resources must implement in order to be managed by the dynamic API server.
+// The Resource interface allows the API server to handle arbitrary resource
+// types, including those defined at runtime via Custom Resource Definitions
+// (CRDs). Each resource provides methods for retrieving its name, creating new
+// instances, and accessing its storage layer.
+
 package api
 
 // Resource defines the interface that all API resources must implement.

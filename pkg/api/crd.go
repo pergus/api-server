@@ -1,4 +1,10 @@
 // pkg/api/crd.go
+//
+// This file defines the structures and interfaces for managing Custom Resource
+// Definitions (CRDs) in the dynamic API server. CRDs allow users to define new
+// resource types at runtime, enabling the API server to handle arbitrary
+// resources without requiring code changes or recompilation.
+
 package api
 
 import (

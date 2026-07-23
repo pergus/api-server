@@ -1,5 +1,5 @@
 // pkg/plugins/interface.go
-
+//
 // Package plugins provides a plugin loading system for dynamic API extensibility.
 //
 // Plugins are compiled Go code that register resources with the API server at runtime.
@@ -14,6 +14,7 @@
 // - A CRD is like a plugin that adds a new resource type
 // - Once registered, it works exactly like built-in resources
 // - The API server code never changes
+
 package plugins
 
 import (

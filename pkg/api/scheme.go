@@ -1,4 +1,11 @@
 // pkg/api/scheme.go
+//
+// This file defines the Scheme interface and its implementation for managing
+// type registration and object creation in the dynamic API server. The Scheme
+// allows the API server to create instances of registered types without directly
+// importing or knowing about those types, enabling support for arbitrary resource
+// types defined at runtime via Custom Resource Definitions (CRDs) or plugins.
+
 package api
 
 import (

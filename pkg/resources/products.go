@@ -1,4 +1,12 @@
 // pkg/resources/products.go
+//
+// This file defines the Product resource type and its associated Resource
+// implementation. The Product resource represents a product in an e-commerce
+// system, with fields for ID, name, description, price, and stock count. The
+// ProductResource struct implements the Resource interface, providing methods
+// to create new Product objects and manage their storage using an in-memory
+// storage backend.
+
 package resources
 
 import (

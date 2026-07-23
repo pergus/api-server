@@ -1,4 +1,10 @@
 // pkg/api/middleware.go
+//
+// This file defines middleware functions for the dynamic API server. Middleware
+// functions wrap HTTP handlers to provide additional functionality such as
+// logging, recovery from panics, timing, and CORS support. The Chain function
+// allows multiple middleware to be applied in a specified order.
+
 package api
 
 import (
