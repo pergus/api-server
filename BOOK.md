@@ -7100,26 +7100,49 @@ echo "All plugins built successfully!"
 
 ### Checkpoint
 
-Build the server and client.
+# Build the server and client binaries.
 ```bash
 mkdir bin
 go build -v -o bin/api-server ./cmd/api-server
-go build -v -o bin/apiclt ./cmd/apictl
+go build -v -o bin/apiclt ./cmd/apiclt
 ```
 
-Build the plugins
+# Build the example plugins.
 ```bash
-chmod +x build_plugins.sh && ./build_plugins.sh
-# start the server
-./bin/api-server
+chmod +x build_plugins.sh
+./build_plugins.sh
+```
 
-# then in another terminal 
-# within ~2 seconds the server logs: Successfully loaded plugin: invoices
-./apictl plugins
-./apictl api-resources    # invoices appears
-./apictl create -f examples/invoice-1.json
-./apictl get invoices
+# Start the API server.
+# The server must be started from the directory that contains the plugins directory
+# so that the plugin loader can discover the compiled .so files.
+```bash
+cd bin
+./api-server
+```
 
+# In another terminal, wait a few seconds for the plugin watcher to load the plugin.
+# The server log should show:
+# Successfully loaded plugin: invoices
+
+# Verify that the plugin is loaded.
+```bash
+./apiclt plugins
+```
+
+# Verify that the new resource provided by the plugin is available.
+```bash
+./apiclt api-resources
+```
+
+# Create an invoice using the dynamically registered resource.
+```bash
+./apiclt create -f examples/invoice-1.json
+```
+
+# Retrieve the created invoice.
+```bash
+./apiclt get invoices
 ```
 
 Two independent runtime-extension mechanisms now coexist: declarative CRDs and
