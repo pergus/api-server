@@ -7140,8 +7140,8 @@ cd bin
 ./apiclt create -f examples/invoice-1.json
 ```
 
-# Retrieve the created invoice.
 ```bash
+# Retrieve the created invoice.
 ./apiclt get invoices
 ```
 
