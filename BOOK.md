@@ -1272,8 +1272,9 @@ import (
 type Router struct {
 	registry       Registry
 	scheme         Scheme
-	//crdRegistry CRDRegistry (Added in Chapter 10)
-	//eventBus    EventBus    (Added in Chapter 13)
+	//crdRegistry CRDRegistry       (Added in Chapter 10)
+	//pluginProvider PluginProvider (Added in Chapter 12)
+	//eventBus    EventBus          (Added in Chapter 13)
 	eventBus       EventBus
 	mux            *http.ServeMux
 }
@@ -3370,7 +3371,7 @@ func cmdAPIVersions(c *Client) {
 }
 
 func cmdPlugins(c *Client) {
-	fmt.Println("plugins command will be implemented in Chapter 9") 
+	fmt.Println("plugins command will be implemented in Chapter 12") 
 }
 
 func cmdGet(c *Client, args []string) {
@@ -3459,13 +3460,6 @@ listing resources, it retrieves the available API groups and displays them in a
 table. Although API groups will become more important in later chapters, the
 command already demonstrates how discovery endpoints can be exposed through a
 consistent command-line interface.
-
-The `cmdPlugins` command retrieves information about the plugins currently
-loaded by the server. In addition to displaying the total number of plugins, it
-prints a table containing details about each one. Any plugins that failed to
-load are also displayed. Like the API group functionality, plugins are
-introduced later in the project, but the command structure already fits
-naturally into the rest of the CLI.
 
 The `cmdGet` command is slightly more flexible because it supports two related
 operations. If only a resource name is provided, such as `apictl get users`, the
@@ -3567,53 +3561,6 @@ func cmdAPIVersions(c *Client) {
 		fmt.Fprintf(w, "%s\n", g)
 	}
 	w.Flush()
-}
-
-// cmdPlugins lists all loaded and failed plugins
-func cmdPlugins(c *Client) {
-	result, err := c.ListPlugins()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Loaded Plugins: %d\n", len(result.Plugins))
-
-	if len(result.Plugins) == 0 {
-		fmt.Println("No plugins loaded")
-	} else {
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-		fmt.Fprintln(w, "NAME\tPATH\tLOADED")
-
-		for _, p := range result.Plugins {
-			fmt.Fprintf(w, "%s\t%s\t%s\n",
-				p.Name,
-				p.Path,
-				p.Loaded,
-			)
-		}
-
-		w.Flush()
-	}
-
-	if len(result.Failed) > 0 {
-		fmt.Println()
-		fmt.Printf("Failed Plugins: %d\n", len(result.Failed))
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-		fmt.Fprintln(w, "PATH\tERROR")
-
-		for _, p := range result.Failed {
-			fmt.Fprintf(w, "%s\t%s\n",
-				p.Path,
-				p.Error,
-			)
-		}
-
-		w.Flush()
-	}
 }
 
 // cmdGet lists or retrieves a resource
@@ -5992,31 +5939,76 @@ Clients can now discover groups and versions, not just flat names.
 
 ## Chapter 12: Go Plugins
 
-
 ### Goal
 
 Add a second extension path: compiled Go plugins (`.so`) that register resources
-when dropped into a watched directory — no restart. This uses Go's `plugin`
-package (Linux / macOS only).
+when dropped into a watched directory — no server restart. This uses Go's
+`plugin` package (Linux / macOS only).
+
+The plugin system allows the API server to gain new resources at runtime without
+changing the core application. A plugin is a separately compiled Go package that
+registers resources and types with the same registries used by built-in
+resources.
+
+The goal is not to create a separate API mechanism. Plugins participate in the
+same dynamic resource system already used by built-in resources and CRDs.
 
 **Figure 12.1 — Plugin loading**
 
 ```mermaid
 flowchart LR
-    F[invoices.so appears<br/>in plugins/] --> W[Loader.Watch poll]
+    F[invoices-v2.so appears<br/>in plugins/] --> W[Loader.Watch poll]
     W --> O[plugin.Open]
     O --> S[Lookup 'Plugin' symbol]
     S --> R[Plugin.Register registry, scheme]
     R --> L[/api/invoices is live/]
 ```
 
+The runtime lifecycle is:
+
+1. The server starts and creates its registries.
+2. Built-in resources are registered.
+3. The plugin loader starts watching the plugin directory.
+4. A new `.so` file appears.
+5. The loader opens the plugin.
+6. The exported `Plugin` symbol is discovered.
+7. The plugin registers resources and types.
+8. The generic API immediately exposes the new resources.
+
+The server does not rebuild routes or restart when a plugin is added.
+
+One important limitation must be understood: Go plugins cannot be unloaded from
+memory after they are opened. The server can remove their registrations through
+`Unregister()`, but the compiled code remains loaded for the lifetime of the
+process.
+
+Another consequence of the Go plugin implementation is that replacing an
+existing `.so` file does not reload it. 
+
+
 ### The Plugin interface
 
-The plugin system needs a stable contract between the core API server and any
-external extensions that are loaded at runtime. The server should not need to
-know what a plugin provides, which resources it creates, or which types it
-introduces. Instead, it only needs to know that the plugin follows a common
-interface.
+The plugin system needs a stable contract between the API server and external
+extensions. The server should not know what resources a plugin provides or how
+those resources are implemented.
+
+Instead, plugins implement a small interface that describes their lifecycle.
+
+A plugin is responsible for:
+
+* Providing a name.
+* Registering resources and types.
+* Removing its registrations when unloaded.
+
+The server remains responsible for:
+
+* Loading the `.so` file.
+* Managing plugin lifecycle.
+* Exposing plugin information.
+* Providing registry and scheme access.
+
+This keeps the dependency direction clean. Plugins extend the framework, but the
+framework does not depend on individual plugins.
 
 The `Plugin` interface defines this contract. A plugin is responsible for
 describing itself, registering the resources and types it contributes, and
@@ -6045,32 +6037,16 @@ optional capabilities that can appear and disappear during the server's
 lifetime. Removing a plugin should leave the server in a clean state, with no
 stale resource registrations pointing to code that is no longer available.
 
-A typical plugin therefore follows a simple lifecycle:
-
-1. The server starts and initializes its registries.
-2. The plugin manager loads a plugin package.
-3. The plugin manager discovers the exported `Plugin` implementation.
-4. The server calls `Register(...)`.
-5. The plugin adds resources and types.
-6. The generic router immediately begins serving the new resources.
-7. If the plugin is removed later, `Unregister(...)` removes its contributions.
-
-The interface intentionally does not expose the `Router`. Plugins do not add
-routes directly because doing so would break the dynamic design. Every resource
-should flow through the same discovery, CRUD, middleware, and authorization
-paths provided by the framework. By limiting plugins to registry and scheme
-operations, newly added capabilities automatically inherit the behavior of the
-existing API server.
-
 
 **Listing 12.1 — `pkg/plugins/interface.go`**
 
 ```go
 // pkg/plugins/interface.go
-
+//
 // Package plugins provides a plugin loading system for dynamic API extensibility.
 //
-// Plugins are compiled Go code that register resources with the API server at runtime.
+// Plugins are compiled Go code that register resources with the API server at
+// runtime.
 //
 // Key insights:
 // - Plugins are loaded from .so files (compiled shared objects)
@@ -6082,6 +6058,7 @@ existing API server.
 // - A CRD is like a plugin that adds a new resource type
 // - Once registered, it works exactly like built-in resources
 // - The API server code never changes
+
 package plugins
 
 import (
@@ -6109,23 +6086,53 @@ type Plugin interface {
 
 ```
 
-This interface is deliberately small. A plugin only needs three pieces of
-information: its identity, how to install its functionality, and how to remove
-it. Everything else — HTTP routing, serialization, discovery, storage access,
-and client compatibility — is provided automatically by the framework.
+The interface is deliberately small. A plugin does not receive access to the
+router, HTTP handlers, or server internals.
 
-As a result, adding a plugin is equivalent to adding another set of resources to
-the server's existing dynamic ecosystem. The same generic machinery that powers
-built-in resources and CRDs can now also power independently developed
-extensions.
+Plugins should never add routes directly. Instead, they register resources with
+the framework. The existing generic API layer then automatically provides:
 
+* discovery
+* CRUD operations
+* serialization
+* storage handling
+* client compatibility
+
+A plugin resource is therefore identical to a built-in resource from the API
+server's perspective.
+
+The exported plugin symbol is the connection between the compiled `.so` file
+and the server.
+
+A plugin normally exposes:
+
+```go
+var Plugin plugins.Plugin = &InvoicePlugin{
+	resource: NewInvoiceResource(),
+}
+```
+
+The loader searches for exactly this symbol:
+
+```go
+handle.Lookup("Plugin")
+```
+
+After the symbol is found, the loader calls:
+
+```go
+Register(registry, scheme)
+```
+
+and the plugin becomes part of the running API.
 
 ### The loader
 
-The plugin interface defines what a plugin must provide, but the loader is the
-component that turns that contract into a running system. Its responsibility is
-to discover plugin files, open them, verify that they implement the expected
-interface, activate them, and keep track of their lifecycle.
+The loader converts compiled plugin files into active API extensions.
+
+Its responsibility is to discover plugin files, open them, verify that they
+implement the expected interface, activate them, and keep track of their
+lifecycle.
 
 Go plugins are compiled separately as shared object files (`.so`). Unlike
 statically linked resources, these extensions do not need to be known when the
@@ -6140,82 +6147,103 @@ independent from the plugin implementation details.
 
 The loading process follows a small number of steps:
 
-1. The loader receives the path to a plugin shared object.
-2. It opens the file using Go's `plugin` package.
-3. It looks for an exported symbol named `Plugin`.
-4. It verifies that the symbol implements the `Plugin` interface.
-5. It calls `Register(...)` so the plugin can add its resources and types.
-6. It stores metadata about the loaded plugin for later inspection or removal.
+Its responsibilities are:
 
-The exported `Plugin` symbol is the bridge between the compiled plugin and the
-server. A plugin package typically exposes a variable containing its
-implementation:
+* Watch a directory for `.so` files.
+* Open plugins dynamically.
+* Discover the exported plugin symbol.
+* Validate the plugin.
+* Register plugin resources.
+* Track loaded plugins.
+* Track failed plugins.
+* Provide plugin information to the API.
+
+The loading sequence is:
+
+1. Receive a plugin path.
+2. Call `plugin.Open(path)`.
+3. Lookup the exported `Plugin` symbol.
+4. Verify it implements `plugins.Plugin`.
+5. Call `Register(...)`.
+6. Store plugin metadata.
+
+The loader maintains two types of state:
+
+Loaded plugins:
 
 ```go
-var Plugin plugins.Plugin = &MyPlugin{}
+type LoadedPlugin struct {
+	Plugin Plugin
+	Path   string
+	Loaded time.Time
+	Handle *plugin.Plugin
+}
 ```
 
-When the loader calls `Lookup("Plugin")`, it retrieves that value without
-knowing anything about the plugin's internal code. This is the same pattern used
-throughout the framework: behavior is discovered through interfaces rather than
-hard-coded dependencies.
-
-The loader also maintains a record of loaded plugins. The `LoadedPlugin`
-structure stores the plugin instance, its file path, load timestamp, and the
-underlying Go plugin handle. Keeping this information makes it possible to
-expose plugin status through future API endpoints, provide operational
-visibility, and support administrative tooling such as `apictl plugins`.
-The repository implementation currently exposes this state through the loader's
-`ListLoaded()` and `LoadedCount()` helpers.
-
-The registry map is protected by a mutex because plugin operations can occur
-concurrently with normal API activity. For example, a plugin may be loaded while
-requests are being served, so access to the loaded plugin collection must be
-synchronized.
-
-The directory watcher provides a simple runtime discovery mechanism. Instead of
-requiring an administrator to manually call a load operation, the loader
-periodically scans a configured directory for new `.so` files. When it finds a
-file that has not been seen before, it attempts to load it automatically.
-
-The watcher uses polling rather than filesystem notifications because it keeps
-the implementation portable and easy to understand. A production system could
-replace this with platform-specific file watching, but the lifecycle remains the
-same: detect a new extension, validate it, register it, and make it available.
-
-Unloading is intentionally more limited than loading. Go's native plugin system
-does not support unloading shared objects from memory after they have been
-opened. The framework therefore treats unloading as a logical operation: it
-removes the plugin's registered resources from the API registry by calling
-`Unregister(...)`. The plugin code remains loaded inside the process, but the
-API server no longer exposes the plugin's functionality.
-
-This distinction is important when designing plugin systems in Go. Loading a
-plugin is a true runtime extension; unloading is a cleanup operation that
-removes its effects. For many server-side extensions this behavior is
-sufficient, because plugins are usually added for the lifetime of the process.
-
-The resulting lifecycle looks like this:
-
-1. The server starts and creates its registries.
-2. The loader begins watching the plugin directory.
-3. A new `.so` file appears.
-4. The loader opens the plugin and finds the exported symbol.
-5. The plugin registers resources and types.
-6. Discovery immediately exposes the new API surface.
-7. Clients can use the new resources through the existing generic endpoints.
-8. Removing the plugin unregisters those resources.
-
-The important architectural result is that plugins do not create a second API
-mechanism. They participate in the same dynamic resource system used by built-in
-resources and CRDs. A plugin-added resource automatically receives the existing
-routing, CRUD handling, discovery support, and client compatibility because it
-enters the system through the same registries as everything else.
-
-**Listing 12.2 — `pkg/plugins/loader.go`**
+Failed plugins:
 
 ```go
+type FailedPluginInfo struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+```
+
+Failed plugins are recorded so the watcher does not repeatedly attempt to load
+the same broken plugin and flood the server log.
+
+For example, if a plugin was compiled against a different version of the API
+package:
+
+```
+plugin was built with a different version of package github.com/pergus/api-server/pkg/api
+```
+
+the failure is stored and the loader ignores that file until the administrator
+replaces it with a different plugin path and restarts the API server.
+
+This behavior makes the watcher predictable:
+
+* New file → attempt load.
+* Successfully loaded → ignore future scans.
+* Failed file → remember failure and ignore future scans.
+
+The plugin directory becomes an installation location rather than a continuous
+retry queue.
+
+
+
+### The loader implementation
+
+The loader is the component that manages the runtime lifecycle of plugins. It
+does not know what resources a plugin provides. It only knows how to discover
+plugins, activate them, track their state, and expose information about them.
+
+The loader stores loaded plugins by plugin name and keeps failed plugin attempts
+separately. This separation is important because a plugin that fails to load
+should not be retried every polling interval.
+
+A failed plugin is usually a configuration or build problem, for example:
+
+* The plugin was compiled against a different version of the API package.
+* The plugin does not export a `Plugin` symbol.
+* The symbol does not implement the required interface.
+* Registration failed because the plugin resource conflicts with an existing one.
+
+The administrator can fix the problem by removing the failed plugin and adding a
+new plugin file with a new name and restart the server.
+
+
+**Listing 12.2 — `pkg/plugins/loader.go`**
+```go
 // pkg/plugins/loader.go
+//
+// This file implements the plugin loader for the API server. The Loader
+// watches a specified directory for new plugin files (.so) and loads them
+// dynamically at runtime. It tracks loaded plugins, handles registration of
+// their resources, and provides information about loaded and failed plugins.
+// The Loader demonstrates the server's runtime extensibility without requiring
+// a restart when new plugins are added.
 
 package plugins
 
@@ -6246,6 +6274,8 @@ type Loader struct {
 	scheme    api.Scheme
 	mu        sync.RWMutex
 	loaded    map[string]*LoadedPlugin
+	failed    map[string]error
+	stopOnce  sync.Once
 	stopChan  chan struct{}
 }
 
@@ -6264,13 +6294,42 @@ func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Load
 		registry:  registry,
 		scheme:    scheme,
 		loaded:    make(map[string]*LoadedPlugin),
+		failed:    make(map[string]error),
 		stopChan:  make(chan struct{}),
 	}
+}
+
+// IsLoaded checks if a plugin is already loaded by path.
+func (l *Loader) IsLoaded(path string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	for _, plugin := range l.loaded {
+		if plugin.Path == path {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasFailed checks if a plugin has failed to load previously.
+func (l *Loader) HasFailed(path string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	_, exists := l.failed[path]
+	return exists
 }
 
 // LoadPlugin loads a single plugin from a file.
 // Returns error if the plugin is invalid.
 func (l *Loader) LoadPlugin(path string) error {
+
+	if l.IsLoaded(path) {
+		return fmt.Errorf("plugin already loaded: %s", path)
+	}
+
 	log.Printf("Loading plugin from %s", path)
 
 	// Open the plugin
@@ -6286,10 +6345,12 @@ func (l *Loader) LoadPlugin(path string) error {
 	}
 
 	// Assert it's a Plugin
-	p, ok := pluginSym.(Plugin)
+	pluginPtr, ok := pluginSym.(*Plugin)
 	if !ok {
-		return fmt.Errorf("Plugin symbol is not of type Plugin")
+		return fmt.Errorf("Plugin symbol is not of type *Plugin")
 	}
+
+	p := *pluginPtr
 
 	// Register the plugin
 	if err := p.Register(l.registry, l.scheme); err != nil {
@@ -6322,6 +6383,8 @@ func (l *Loader) UnloadPlugin(name string) error {
 	delete(l.loaded, name)
 	l.mu.Unlock()
 
+	log.Printf("Unloading plugin: %s", name)
+
 	// Call the plugin's Unregister
 	return loaded.Plugin.Unregister(l.registry)
 }
@@ -6334,27 +6397,26 @@ func (l *Loader) Watch(interval time.Duration) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		lastSeen := make(map[string]bool)
-
 		for {
 			select {
 			case <-l.stopChan:
 				log.Println("Stopping plugin watcher")
 				return
 			case <-ticker.C:
-				l.scanPlugins(lastSeen)
+				l.scanPlugins()
 			}
 		}
 	}()
 }
 
 // scanPlugins looks for new .so files in the plugin directory.
-func (l *Loader) scanPlugins(lastSeen map[string]bool) {
+func (l *Loader) scanPlugins() {
 	// Check if directory exists
 	_, err := os.Stat(l.pluginDir)
 	if os.IsNotExist(err) {
 		return
 	}
+
 	if err != nil {
 		log.Printf("Error checking plugin directory: %v", err)
 		return
@@ -6367,8 +6429,6 @@ func (l *Loader) scanPlugins(lastSeen map[string]bool) {
 		return
 	}
 
-	currentSeen := make(map[string]bool)
-
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -6379,100 +6439,374 @@ func (l *Loader) scanPlugins(lastSeen map[string]bool) {
 		}
 
 		path := filepath.Join(l.pluginDir, entry.Name())
-		currentSeen[path] = true
 
-		// If we haven't seen this file before, load it
-		if !lastSeen[path] {
-			if err := l.LoadPlugin(path); err != nil {
-				log.Printf("Failed to load plugin %s: %v", path, err)
-			}
+		if l.IsLoaded(path) {
+			continue
+		}
+
+		if l.HasFailed(path) {
+			continue
+		}
+
+		if err := l.LoadPlugin(path); err != nil {
+			l.mu.Lock()
+			l.failed[path] = err
+			l.mu.Unlock()
+			log.Printf("Failed to load plugin... %s: %v", path, err)
+			continue
 		}
 	}
+}
 
-	// Update lastSeen
-	for path := range currentSeen {
-		lastSeen[path] = true
-	}
+// Scan scans the plugin directory for new plugins and loads them.
+func (l *Loader) Scan() {
+	l.scanPlugins()
 }
 
 // Stop stops the plugin watcher.
 func (l *Loader) Stop() {
-	close(l.stopChan)
+	// Signal the watcher to stop
+	// Use sync.Once to ensure we only close the channel once
+	l.stopOnce.Do(func() {
+		close(l.stopChan)
+	})
 }
 
-// ListLoaded returns all loaded plugins.
-func (l *Loader) ListLoaded() []LoadedPlugin {
+// ListLoaded returns a list of all loaded plugins.
+func (l *Loader) ListLoaded() []api.PluginInfo {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	plugins := make([]LoadedPlugin, 0, len(l.loaded))
+	result := make([]api.PluginInfo, 0, len(l.loaded))
+
 	for _, p := range l.loaded {
-		plugins = append(plugins, *p)
+		result = append(result, api.PluginInfo{
+			Name:   p.Plugin.Name(),
+			Path:   p.Path,
+			Loaded: p.Loaded.Format("2006-01-02T15:04:05"),
+		})
 	}
-	return plugins
+
+	return result
 }
 
-// LoadedCount returns the number of loaded plugins.
-func (l *Loader) LoadedCount() int {
+// ListFailed returns a list of all plugins that failed to load.
+func (l *Loader) ListFailed() []api.FailedPluginInfo {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return len(l.loaded)
+
+	result := make([]api.FailedPluginInfo, 0, len(l.failed))
+
+	for path, err := range l.failed {
+		result = append(result, api.FailedPluginInfo{
+			Path:  path,
+			Error: err.Error(),
+		})
+	}
+
+	return result
 }
 
 ```
 
-The `listPlugins` endpoint provides the foundation for exposing plugin state
-through the API. The current implementation is intentionally minimal and returns
-an empty collection because the router has not yet been connected to the plugin
-loader. In a complete deployment, this endpoint would receive access to the
-loader instance and return the metadata maintained by `ListLoaded()`, including
-plugin names, load paths, and activation times.
+### Plugin provider abstraction
 
-This separation is intentional. The router should not manage plugin lifecycle
-directly; it should only expose information provided by the component
-responsible for managing plugins. The loader owns discovery and lifecycle
-operations, while the API layer provides visibility into that state.
+The router should not import the plugin package directly. Doing so would create
+a dependency cycle:
 
-**Listing 12.3 — `pkg/api/router.go` (plugin)**
+```mermaid
+flowchart TD
+    A[api/router] --> B[plugins/loader]
+    B --> C[api]
+```
+
+Instead, the API package defines a small interface. The loader implements this
+interface, but the router only knows about the abstraction.
+
+**Listing 12.3 — `pkg/api/plugins.go`**
+```go
+// pkg/api/plugins.go
+//
+// This file defines the PluginProvider interface and related types for managing
+// plugins in the API server. The PluginProvider interface allows the API server
+// to provide information about loaded and failed plugins, enabling clients to
+// query the server for plugin status. The PluginInfo struct contains public
+// information about a loaded plugin, including its name, path, and the time it
+// was loaded.
+
+package api
+
+// PluginInfo contains public plugin information.
+type PluginInfo struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Loaded string `json:"loaded"`
+}
+
+// FailedPluginInfo contains information about a plugin that failed to load.
+type FailedPluginInfo struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+// PluginProvider provides information about loaded plugins.
+type PluginProvider interface {
+	ListLoaded() []PluginInfo
+	ListFailed() []FailedPluginInfo
+}
+
+```
+
+### Integrating the router with the plugin loader
+
+The loader manages plugins, but the router is responsible for exposing API
+endpoints. Rather than coupling the router directly to the plugin package, the
+router depends only on the `PluginProvider` interface introduced earlier. This
+keeps the routing layer independent of the implementation details of plugin
+loading while still allowing it to expose plugin information through the API.
+
+The router therefore stores a reference to a `PluginProvider`. If no provider
+has been configured, the router simply reports that no plugins are available.
+This makes the feature optional and allows the router to operate normally even
+when the plugin system is disabled.
+
+**Listing 12.4 - `pkg/api/router.go` (Router)**
+```go
+type Router struct {
+	registry       Registry
+	scheme         Scheme
+	crdRegistry    CRDRegistry
+	pluginProvider PluginProvider
+	//eventBus    EventBus          (Added in Chapter 13)
+	mux            *http.ServeMux
+}
+
+```
+
+Adding the provider field is sufficient to make plugin information available to
+the router. The next step is to provide a way for the server to supply the
+loader and to expose an endpoint that returns the current plugin state.
+
+
+**Listing 12.5 - `pkg/api/router.go` (SetPluginProvider and listPlugins)**
 ```go
 // -----------------------------------------------------------------------------
 // Plugins
 //
 
+// SetPluginProvider sets the plugin provider for the router.
+func (r *Router) SetPluginProvider(provider PluginProvider) {
+	r.pluginProvider = provider
+}
+
 // listPlugins handles GET /plugins
-// Returns information about loaded plugins (framework endpoint for future enhancement)
 func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// For now, return a simple response structure
-	// In the future, this will be connected to the plugin loader
 	w.Header().Set("Content-Type", "application/json")
+
+	if r.pluginProvider == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"plugins": []PluginInfo{},
+			"failed":  []FailedPluginInfo{},
+		})
+		return
+	}
+
+	plugins := r.pluginProvider.ListLoaded()
+	failed := r.pluginProvider.ListFailed()
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"plugins": []interface{}{},
-		"count":   0,
+		"plugins": plugins,
+		"failed":  failed,
 	})
 }
+
 ```
 
-With the plugin system in place, resources can now enter the API server through
-three different mechanisms:
+The `SetPluginProvider` method injects the loader into the router without
+creating a dependency on the plugin package itself. The `listPlugins` handler
+then queries the provider for both loaded and failed plugins and returns the
+results as JSON. Since the router communicates only through the interface, any
+future implementation that satisfies `PluginProvider` can be substituted without
+modifying the routing code.
 
-1. Built-in resources registered when the server starts.
-2. Dynamically created resource definitions such as CRDs.
-3. External plugins loaded from compiled extensions.
 
-All three mechanisms ultimately use the same registry and scheme abstractions.
-This is the key architectural property that allows the server to remain generic:
-new functionality is added by contributing registrations rather than by
-modifying routing, storage, or API logic.
+### Initializing the plugin system
 
-The plugin system therefore extends the existing resource model rather than
-creating a separate extension framework. A resource provided by a plugin is
-handled by the same discovery, CRUD processing, serialization, authorization,
-and client compatibility mechanisms as every other resource in the server.
+The final step is to connect the server, router, and loader during application
+startup. The server already owns the resource registry and scheme, making it the
+natural place to construct the loader and provide it with the objects needed for
+plugin registration.
+
+Once the loader has been created, it is passed to the router as its
+PluginProvider. The server then performs an initial scan to discover plugins
+that already exist before starting the background watcher that detects newly
+added plugins.
+
+**Listing 12.6 - `cmd/api-server/main.go` (SetPluginProvider)**
+```go
+// Create plugin loader
+// This watches the plugins/ directory for new .so files
+log.Println("Starting plugin system...")
+loader := plugins.NewLoader("./plugins", server.Registry(), server.Scheme())
+
+// Set the plugin provider for the router.
+server.Router().SetPluginProvider(loader)
+
+// Load any existing plugins
+log.Println("Scanning for existing plugins...")
+loader.Scan()
+
+// Start watching for new plugins
+// Poll every 2 seconds for new plugins
+loader.Watch(2 * time.Second)
+
+
+```
+
+This sequence ensures that plugins present when the server starts become
+available immediately, while newly copied `.so` files are detected automatically
+by the watcher. From this point onward, the router can report plugin status, and
+newly loaded plugins become available through the existing generic API without
+requiring any additional server configuration.
+
+### Adding plugin support to the client
+
+Since the server now exposes plugin information through the `/plugins` endpoint,
+the client can retrieve and display the same information. As with the other
+client commands, the first step is to define Go types that match the JSON
+returned by the server.
+
+The client mirrors the server's public data structures rather than importing
+them directly. This keeps the client independent of the server implementation
+while ensuring that the JSON response can be decoded into strongly typed values.
+
+**Listing 12.7 - `cmd/apiclt/main.go` (PluginList)**
+```go
+// PluginInfo contains public plugin information.
+type PluginInfo struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Loaded string `json:"loaded"`
+}
+
+// FailedPluginInfo contains information about a plugin that failed to load.
+type FailedPluginInfo struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+// PluginList bundles loaded and failed plugins.
+// It is returned by the ListPlugins method of the Client.
+type PluginList struct {
+	Plugins []PluginInfo       `json:"plugins"`
+	Count   int                `json:"count"`
+	Failed  []FailedPluginInfo `json:"failed"`
+}
+
+```
+
+With the response types defined, the client can implement a helper that
+retrieves the plugin information from the server. This method follows the same
+pattern as the other client operations by issuing an HTTP request, decoding the
+JSON response, and returning the populated structure to the caller.
+
+**Listing 12.8 - `cmd/apiclt/main.go` (ListPlugins)**
+```go
+// -----------------------------------------------------------------------------
+// Plugins
+//
+
+// ListPlugins lists loaded and failed plugins.
+func (c *Client) ListPlugins() (*PluginList, error) {
+	resp, err := c.get("/plugins")
+	if err != nil {
+		return nil, err
+	}
+
+	var result PluginList
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+```
+
+The client now has a convenient API for retrieving plugin information. The final
+step is to expose this functionality through a CLI command that presents the
+information in a human-readable format.
+
+The `cmdPlugins` command displays all successfully loaded plugins together with
+their installation path and load time. If any plugins failed to load, those
+failures are shown separately so administrators can quickly identify build or
+compatibility problems. This provides a simple operational view of the plugin
+subsystem without requiring direct access to the server logs.
+
+**Listing 12.9 - `cmd/apiclt/commands.go` ()**
+```go
+// cmdPlugins lists all loaded and failed plugins
+func cmdPlugins(c *Client) {
+	result, err := c.ListPlugins()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Loaded Plugins: %d\n", len(result.Plugins))
+
+	if len(result.Plugins) == 0 {
+		fmt.Println("No plugins loaded")
+	} else {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "NAME\tPATH\tLOADED")
+
+		for _, p := range result.Plugins {
+			fmt.Fprintf(w, "%s\t%s\t%s\n",
+				p.Name,
+				p.Path,
+				p.Loaded,
+			)
+		}
+
+		w.Flush()
+	}
+
+	if len(result.Failed) > 0 {
+		fmt.Println()
+		fmt.Printf("Failed Plugins: %d\n", len(result.Failed))
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "PATH\tERROR")
+
+		for _, p := range result.Failed {
+			fmt.Fprintf(w, "%s\t%s\n",
+				p.Path,
+				p.Error,
+			)
+		}
+
+		w.Flush()
+	}
+}
+
+```
+
+The resulting command follows the same conventions as the rest of the CLI.
+Administrators can inspect the current plugin state with a single command,
+making it easy to verify that new plugins have been discovered successfully or
+diagnose failures caused by incompatible or incorrectly built plugin binaries.
+
+The router can now expose plugin information without knowing anything about the
+loader implementation.
+
 
 
 ### An example plugin
@@ -6563,9 +6897,29 @@ resource abstraction and the plugin lifecycle. Once loaded, their resource
 automatically receives the same discovery, CRUD handling, middleware, and client
 support as every other resource in the system.
 
-**Listing 12.3 — `plugins/invoices/main.go`**
+**Listing 12.10 — `plugins/invoices/main.go`**
 
 ```go
+// plugins/invoices/main.go
+//
+// Package main implements the invoices plugin.
+//
+// This is a complete example of a plugin that:
+// - Implements the Plugin interface
+// - Defines its own resource type (Invoice)
+// - Registers itself with the API server when loaded
+// - Becomes immediately available through the API
+//
+// To use this plugin:
+// 1. Build it: go build -buildmode=plugin -o invoices.so ./plugins/invoices/main.go
+// 2. Copy the .so file to the plugins/ directory while the server is running
+// 3. The server will automatically load it and make /api/invoices available
+//
+// This demonstrates that new API resources can be introduced without:
+// - Recompiling the server
+// - Restarting the server
+// - Rebuilding the HTTP router
+// - Any framework changes
 package main
 
 import (
@@ -6650,6 +7004,7 @@ var Plugin plugins.Plugin = &InvoicePlugin{
 	resource: NewInvoiceResource(),
 }
 
+
 ```
 
 This example demonstrates the final goal of the architecture: the API server no
@@ -6658,8 +7013,8 @@ itself, from user-defined CRDs, or from separately compiled plugins. The
 framework provides the common machinery, while extensions provide only the
 pieces that are unique to them. 
 
-**Listing 12.4 — `plugins/build.sh`**
 
+**Listing 12.11 — `build_plugins.sh`**
 ```bash
 #!/bin/bash
 
@@ -6670,140 +7025,43 @@ set -e
 
 echo "Building plugins..."
 
-# Build invoices plugin
-echo "Building invoices plugin..."
-go build -buildmode=plugin -o invoices/invoices.so ./invoices/main.go
+mkdir -p bin/plugins
+
+for plugin_dir in plugins/*; do
+    if [ -d "$plugin_dir" ]; then
+        plugin_name=$(basename "$plugin_dir")
+
+        echo "Building ${plugin_name} plugin..."
+        go build -buildmode=plugin -o "bin/plugins/${plugin_name}.so" "./${plugin_dir}"
+    fi
+done
 
 echo "All plugins built successfully!"
-echo ""
-echo "To use plugins:"
-echo "1. Copy .so files to the plugins/ directory while the server is running"
-echo "2. The server will automatically load them"
-echo ""
-echo "Example:"
-echo "  cp invoices/invoices.so ../plugins/"
+
 ```
-
-
-### Wiring the loader into `main()`
-
-The plugin loader is a separate subsystem, so the server entrypoint is
-responsible for creating it and connecting it to the existing API registries.
-This is the point where the dynamic extension system becomes part of the running
-application.
-
-The loader needs two things from the server:
-
-* The `Registry`, where plugins register their resources.
-* The `Scheme`, where plugins register their object factories.
-
-By passing these dependencies into the loader, plugins do not need direct access
-to the `Server` object itself. They receive only the interfaces required to
-extend the API. This keeps the plugin boundary clean and prevents extensions
-from depending on server internals.
-
-The loader should be initialized after the built-in resources have been
-registered. This ordering is important because it gives the application a
-predictable startup sequence:
-
-1. Create the server.
-2. Register built-in resources and types.
-3. Create the plugin loader.
-4. Load any plugins that already exist on disk.
-5. Begin watching for newly added plugins.
-6. Start serving HTTP requests.
-
-Existing plugins are loaded immediately during startup so that the API is fully
-populated before clients begin discovering resources. For example, if an invoice
-plugin already exists in the plugins directory, the first `/api` discovery
-request should include `invoices` rather than requiring an administrator to wait
-for the polling interval.
-
-The loader then begins watching the directory for changes. The watcher
-periodically scans for new `.so` files and loads them automatically. This means
-an administrator can add a new extension while the server is running, and the
-new resources will become available without restarting the process.
-
-The startup code is added after built-in registration and before
-`server.Start()`:
-
-
-**Listing 12.5 — `cmd/api-server/main.go` (plugin additions)**
-```go
-	// Create the plugin loader watching ./plugins for .so files.
-	log.Println("Starting plugin system...")
-	loader := plugins.NewLoader("./plugins", server.Registry(), server.Scheme())
-
-	// Load any plugins already present.
-	if entries, err := os.ReadDir("./plugins"); err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && len(entry.Name()) > 3 && entry.Name()[len(entry.Name())-3:] == ".so" {
-				if err := loader.LoadPlugin("./plugins/" + entry.Name()); err != nil {
-					log.Printf("Warning: failed to load %s: %v", entry.Name(), err)
-				}
-			}
-		}
-	}
-
-	// Poll for new plugins every 2 seconds.
-	loader.Watch(2 * time.Second)
-```
-
-The initial directory scan and the background watcher serve different purposes.
-The scan handles plugins that were already installed before the server started.
-The watcher handles plugins added later while the server is running. Together
-they provide both startup discovery and runtime extensibility. 
-
-The loader also has a lifecycle of its own, so it should be stopped when the
-server shuts down. During graceful shutdown, call:
-
-```go
-loader.Stop()
-```
-
-before the process exits. This closes the watcher's stop channel and allows the
-background goroutine to terminate cleanly.
-
-The final `main()` lifecycle now looks like this:
-
-1. Initialize the server.
-2. Register built-in resources.
-3. Initialize the plugin system.
-4. Load installed plugins.
-5. Watch for new plugins.
-6. Start the HTTP server.
-7. Wait for a shutdown signal.
-8. Stop the plugin watcher.
-9. Gracefully shut down the HTTP server.
-
-This keeps the plugin system aligned with the rest of the application lifecycle.
-Plugins are not a separate service or a special execution path; they are another
-source of resources that participate in the same registry-driven API model.
-
-Remember to add the plugin package import:
-
-```go
-import (
-	"github.com/pergus/api-server/pkg/plugins"
-)
-```
-
-After this change, dropping a compiled plugin into `./plugins` is enough to
-extend the running API server. No route changes, client updates, or server
-rebuilds are required. The discovery system introduced in earlier chapters will
-automatically expose the new resource once the plugin registers it.
-
 
 ### Checkpoint
 
+Build the server and client.
 ```bash
-cd plugins && chmod +x build.sh && ./build.sh && cd ..
-# start the server, then in another terminal:
-cp plugins/invoices/invoices.so plugins/
+mkdir bin
+go build -v -o bin/api-server ./cmd/api-server
+go build -v -o bin/apiclt ./cmd/apiclt
+```
+
+Build the plugins
+```bash
+chmod +x build_plugins.sh && ./build_plugins.sh
+# start the server
+./bin/api-server
+
+# then in another terminal 
 # within ~2 seconds the server logs: Successfully loaded plugin: invoices
+./apictl plugins
 ./apictl api-resources    # invoices appears
 ./apictl create -f examples/invoice-1.json
 ./apictl get invoices
+
 ```
 
 Two independent runtime-extension mechanisms now coexist: declarative CRDs and

@@ -19,17 +19,21 @@ import (
 	"time"
 )
 
+// PluginInfo contains public plugin information.
 type PluginInfo struct {
 	Name   string `json:"name"`
 	Path   string `json:"path"`
 	Loaded string `json:"loaded"`
 }
 
+// FailedPluginInfo contains information about a plugin that failed to load.
 type FailedPluginInfo struct {
 	Path  string `json:"path"`
 	Error string `json:"error"`
 }
 
+// PluginList bundles loaded and failed plugins.
+// It is returned by the ListPlugins method of the Client.
 type PluginList struct {
 	Plugins []PluginInfo       `json:"plugins"`
 	Count   int                `json:"count"`
