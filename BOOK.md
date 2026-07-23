@@ -6645,7 +6645,8 @@ plugin registration.
 Once the loader has been created, it is passed to the router as its
 PluginProvider. The server then performs an initial scan to discover plugins
 that already exist before starting the background watcher that detects newly
-added plugins.
+added plugins. Add the code in Listing 12.6 below before the goroutine call
+in `cmd/api-server/main.go`.
 
 **Listing 12.6 - `cmd/api-server/main.go` (SetPluginProvider)**
 ```go
@@ -6685,7 +6686,7 @@ The client mirrors the server's public data structures rather than importing
 them directly. This keeps the client independent of the server implementation
 while ensuring that the JSON response can be decoded into strongly typed values.
 
-**Listing 12.7 - `cmd/apiclt/main.go` (PluginList)**
+**Listing 12.7 - `cmd/apiclt/client.go` (PluginList)**
 ```go
 // PluginInfo contains public plugin information.
 type PluginInfo struct {
@@ -6715,7 +6716,7 @@ retrieves the plugin information from the server. This method follows the same
 pattern as the other client operations by issuing an HTTP request, decoding the
 JSON response, and returning the populated structure to the caller.
 
-**Listing 12.8 - `cmd/apiclt/main.go` (ListPlugins)**
+**Listing 12.8 - `cmd/apiclt/client.go` (ListPlugins)**
 ```go
 // -----------------------------------------------------------------------------
 // Plugins
