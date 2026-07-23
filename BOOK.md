@@ -5607,10 +5607,9 @@ This chapter adds a second level of discovery through the `/apis` hierarchy.
 Instead of only asking "what resources exist?", clients can now ask "what API
 groups exist?" and "what resources belong to a particular group and version?"
 
-This discovery model follows the same idea used by Kubernetes-style APIs: the
-API surface is organized into groups, versions, and resources. A client can
-begin with no knowledge of the server, walk the discovery endpoints, and learn
-exactly what operations and resource types are available.
+This discovery model organizes the API surface into groups, versions, and
+resources. A client can start with no knowledge of the server, use the discovery
+endpoints, and learn what operations and resource types are available.
 
 The discovery system is especially important for CRDs. Since custom resources
 are created dynamically, the server cannot know their names when it is compiled.
