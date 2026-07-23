@@ -29,6 +29,7 @@ type Loader struct {
 	scheme    api.Scheme
 	mu        sync.RWMutex
 	loaded    map[string]*LoadedPlugin
+	seen      map[string]bool
 	stopChan  chan struct{}
 }
 
@@ -47,6 +48,7 @@ func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Load
 		registry:  registry,
 		scheme:    scheme,
 		loaded:    make(map[string]*LoadedPlugin),
+		seen:      make(map[string]bool),
 		stopChan:  make(chan struct{}),
 	}
 }
@@ -69,10 +71,16 @@ func (l *Loader) LoadPlugin(path string) error {
 	}
 
 	// Assert it's a Plugin
-	p, ok := pluginSym.(Plugin)
+	//p, ok := pluginSym.(Plugin)
+	//if !ok {
+	//	return fmt.Errorf("Plugin symbol is not of type Plugin")
+	//}
+	pluginPtr, ok := pluginSym.(*Plugin)
 	if !ok {
-		return fmt.Errorf("Plugin symbol is not of type Plugin")
+		return fmt.Errorf("Plugin symbol is not of type *Plugin")
 	}
+
+	p := *pluginPtr
 
 	// Register the plugin
 	if err := p.Register(l.registry, l.scheme); err != nil {
@@ -117,7 +125,7 @@ func (l *Loader) Watch(interval time.Duration) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		lastSeen := make(map[string]bool)
+		//lastSeen := make(map[string]bool)
 
 		for {
 			select {
@@ -125,19 +133,22 @@ func (l *Loader) Watch(interval time.Duration) {
 				log.Println("Stopping plugin watcher")
 				return
 			case <-ticker.C:
-				l.scanPlugins(lastSeen)
+				//l.scanPlugins(lastSeen)
+				l.scanPlugins()
 			}
 		}
 	}()
 }
 
+
 // scanPlugins looks for new .so files in the plugin directory.
-func (l *Loader) scanPlugins(lastSeen map[string]bool) {
+func (l *Loader) scanPlugins() {
 	// Check if directory exists
 	_, err := os.Stat(l.pluginDir)
 	if os.IsNotExist(err) {
 		return
 	}
+
 	if err != nil {
 		log.Printf("Error checking plugin directory: %v", err)
 		return
@@ -150,8 +161,6 @@ func (l *Loader) scanPlugins(lastSeen map[string]bool) {
 		return
 	}
 
-	currentSeen := make(map[string]bool)
-
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -162,20 +171,30 @@ func (l *Loader) scanPlugins(lastSeen map[string]bool) {
 		}
 
 		path := filepath.Join(l.pluginDir, entry.Name())
-		currentSeen[path] = true
 
-		// If we haven't seen this file before, load it
-		if !lastSeen[path] {
-			if err := l.LoadPlugin(path); err != nil {
-				log.Printf("Failed to load plugin %s: %v", path, err)
-			}
+		l.mu.Lock()
+
+		alreadySeen := l.seen[path]
+
+		if !alreadySeen {
+			l.seen[path] = true
+		}
+
+		l.mu.Unlock()
+
+		if alreadySeen {
+			continue
+		}
+
+		if err := l.LoadPlugin(path); err != nil {
+			log.Printf("Failed to load plugin %s: %v", path, err)
 		}
 	}
+}
 
-	// Update lastSeen
-	for path := range currentSeen {
-		lastSeen[path] = true
-	}
+// Scan scans the plugin directory for new plugins and loads them.
+func (l *Loader) Scan() {
+	l.scanPlugins()
 }
 
 // Stop stops the plugin watcher.

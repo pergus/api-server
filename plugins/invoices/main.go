@@ -1,3 +1,5 @@
+// plugins/invoices/main.go
+//
 // Package main implements the invoices plugin.
 //
 // This is a complete example of a plugin that:

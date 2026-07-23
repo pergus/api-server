@@ -173,17 +173,7 @@ func main() {
 
 	// Load any existing plugins
 	log.Println("Scanning for existing plugins...")
-	entries, err := os.ReadDir("./plugins")
-	if err == nil {
-		for _, entry := range entries {
-			if !entry.IsDir() && entry.Name()[len(entry.Name())-3:] == ".so" {
-				pluginPath := "./plugins/" + entry.Name()
-				if err := loader.LoadPlugin(pluginPath); err != nil {
-					log.Printf("Warning: failed to load %s: %v", pluginPath, err)
-				}
-			}
-		}
-	}
+	loader.Scan()
 
 	// Start watching for new plugins
 	// Poll every 2 seconds for new plugins
