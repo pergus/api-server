@@ -5857,11 +5857,6 @@ Clients can now discover groups and versions, not just flat names.
 
 ## Chapter 12: Go Plugins
 
-The `listPlugins` method is included as a placeholder for future extension.
-Plugins will be introduced later, but the route is registered now so the API
-structure is ready for that feature.
-
-
 
 ### Goal
 
@@ -5932,10 +5927,26 @@ paths provided by the framework. By limiting plugins to registry and scheme
 operations, newly added capabilities automatically inherit the behavior of the
 existing API server.
 
+
 **Listing 12.1 — `pkg/plugins/interface.go`**
 
 ```go
+// pkg/plugins/interface.go
+
 // Package plugins provides a plugin loading system for dynamic API extensibility.
+//
+// Plugins are compiled Go code that register resources with the API server at runtime.
+//
+// Key insights:
+// - Plugins are loaded from .so files (compiled shared objects)
+// - Each plugin is a separate Go package compiled to a plugin binary
+// - When a plugin loads, it calls Register to add itself to the server
+// - The server never needs to recompile or restart
+//
+// This demonstrates how to handle CustomResourceDefinitions (CRDs):
+// - A CRD is like a plugin that adds a new resource type
+// - Once registered, it works exactly like built-in resources
+// - The API server code never changes
 package plugins
 
 import (
@@ -5960,6 +5971,7 @@ type Plugin interface {
 	// Called when the plugin is unloaded.
 	Unregister(registry api.Registry) error
 }
+
 ```
 
 This interface is deliberately small. A plugin only needs three pieces of
@@ -6068,6 +6080,8 @@ enters the system through the same registries as everything else.
 **Listing 12.2 — `pkg/plugins/loader.go`**
 
 ```go
+// pkg/plugins/loader.go
+
 package plugins
 
 import (
@@ -6102,10 +6116,10 @@ type Loader struct {
 
 // LoadedPlugin tracks a loaded plugin.
 type LoadedPlugin struct {
-	Plugin  Plugin
-	Path    string
-	Loaded  time.Time
-	Handle  *plugin.Plugin
+	Plugin Plugin
+	Path   string
+	Loaded time.Time
+	Handle *plugin.Plugin
 }
 
 // NewLoader creates a plugin loader.
@@ -6279,6 +6293,14 @@ registrations compiled into the application, CRDs created dynamically through
 the API, and external plugins loaded at runtime. All three paths converge on the
 same registry-driven architecture, which is what allows the server to remain
 generic while its capabilities continue to expand.
+
+
+** Router ***
+The `listPlugins` method is included as a placeholder for future extension.
+Plugins will be introduced later, but the route is registered now so the API
+structure is ready for that feature.
+
+
 
 
 ### An example plugin
