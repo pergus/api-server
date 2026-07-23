@@ -69,6 +69,7 @@ func (s *Server) CRDRegistry() CRDRegistry {
 	return s.crdRegistry
 }
 
+// Router returns the HTTP router.
 func (s *Server) Router() *Router {
 	return s.router
 }
