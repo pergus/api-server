@@ -6588,8 +6588,24 @@ the router. The next step is to provide a way for the server to supply the
 loader and to expose an endpoint that returns the current plugin state.
 
 
-**Listing 12.5 - `pkg/api/router.go` (SetPluginProvider and listPlugins)**
+**Listing 12.5 - `pkg/api/router.go` (Setup, SetPluginProvider and listPlugins)**
 ```go
+// Setup registers the generic routes.
+// These routes are created ONCE and never change, even when new resources are added.
+func (r *Router) Setup() {
+	// Discovery endpoints
+	r.mux.HandleFunc("/api", r.discovery)
+	r.mux.HandleFunc("/apis", r.discoverAPIs)
+	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
+
+	// Plugin endpoint
+	r.mux.HandleFunc("/plugins", r.listPlugins)
+
+	// Catch-all handler for all resource and CRD operations
+	r.mux.HandleFunc("/", r.route)
+}
+
+
 // -----------------------------------------------------------------------------
 // Plugins
 //
