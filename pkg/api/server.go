@@ -1,4 +1,12 @@
 // pkg/api/server.go
+//
+// This file implements the core HTTP API server for the dynamic API framework.
+// The Server struct manages the resource registry, type scheme, router, and
+// event bus. It provides methods to start and stop the server, register
+// resources and types at runtime, and handle Custom Resource Definitions
+// (CRDs). The server supports dynamic registration of resources and types
+// without requiring a restart, enabling runtime extensibility through plugins.
+
 package api
 
 import (
@@ -59,6 +67,10 @@ func (s *Server) Scheme() Scheme {
 // Called to manage Custom Resource Definitions.
 func (s *Server) CRDRegistry() CRDRegistry {
 	return s.crdRegistry
+}
+
+func (s *Server) Router() *Router {
+	return s.router
 }
 
 // EventBus returns the event bus.

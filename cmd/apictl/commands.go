@@ -1,4 +1,11 @@
 // cmd/apictl/commands.go
+//
+// This file contains the command-line interface (CLI) commands for interacting
+// with the API server. The commands allow users to list resources, retrieve
+// specific resources, create or delete resources, and manage plugins. The CLI
+// communicates with the API server over HTTP and provides a user-friendly way
+// to interact with the server's dynamic API capabilities.
+
 package main
 
 import (
@@ -56,27 +63,49 @@ func cmdAPIVersions(c *Client) {
 
 // cmdPlugins lists all loaded plugins
 func cmdPlugins(c *Client) {
-	plugins, count, err := c.ListPlugins()
+	result, err := c.ListPlugins()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Loaded Plugins: %d\n", count)
-	if len(plugins) == 0 {
+	fmt.Printf("Loaded Plugins: %d\n", len(result.Plugins))
+
+	if len(result.Plugins) == 0 {
 		fmt.Println("No plugins loaded")
-		return
+	} else {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "NAME\tPATH\tLOADED")
+
+		for _, p := range result.Plugins {
+			fmt.Fprintf(w, "%s\t%s\t%s\n",
+				p.Name,
+				p.Path,
+				p.Loaded,
+			)
+		}
+
+		w.Flush()
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPATH\tLOADED")
-	for _, p := range plugins {
-		name, _ := p["name"].(string)
-		path, _ := p["path"].(string)
-		loaded, _ := p["loaded"].(string)
-		fmt.Fprintf(w, "%s\t%s\t%s\n", name, path, loaded)
+	if len(result.Failed) > 0 {
+		fmt.Println()
+		fmt.Printf("Failed Plugins: %d\n", len(result.Failed))
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "PATH\tERROR")
+
+		for _, p := range result.Failed {
+			fmt.Fprintf(w, "%s\t%s\n",
+				p.Path,
+				p.Error,
+			)
+		}
+
+		w.Flush()
 	}
-	w.Flush()
 }
 
 // cmdGet lists or retrieves a resource

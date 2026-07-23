@@ -1,4 +1,13 @@
 // pkg/api/router.go
+//
+//	This file implements the HTTP router for the dynamic API server. The router
+//	is responsible for dispatching incoming HTTP requests to the appropriate
+//	handlers based on the request path and method. It supports generic routing
+//	for all registered resources, including built-in resources and dynamically
+//	added Custom Resource Definitions (CRDs). The router also provides discovery
+//	endpoints for clients to list available resources and APIs, as well as
+//	endpoints for managing plugins.
+
 package api
 
 import (
@@ -34,11 +43,12 @@ import (
 // This means new resources are immediately available after registration—
 // no router rebuild, no server restart, no HTTP listener restart.
 type Router struct {
-	registry    Registry
-	scheme      Scheme
-	crdRegistry CRDRegistry
-	eventBus    EventBus
-	mux         *http.ServeMux
+	registry       Registry
+	scheme         Scheme
+	crdRegistry    CRDRegistry
+	pluginProvider PluginProvider
+	eventBus       EventBus
+	mux            *http.ServeMux
 }
 
 // NewRouter creates a new router.
@@ -574,20 +584,34 @@ func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
 // Plugins
 //
 
+// SetPluginProvider sets the plugin provider for the router.
+func (r *Router) SetPluginProvider(provider PluginProvider) {
+	r.pluginProvider = provider
+}
+
 // listPlugins handles GET /plugins
-// Returns information about loaded plugins (framework endpoint for future enhancement)
 func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// For now, return a simple response structure
-	// In the future, this will be connected to the plugin loader
 	w.Header().Set("Content-Type", "application/json")
+
+	if r.pluginProvider == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"plugins": []PluginInfo{},
+			"failed":  []FailedPluginInfo{},
+		})
+		return
+	}
+
+	plugins := r.pluginProvider.ListLoaded()
+	failed := r.pluginProvider.ListFailed()
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"plugins": []interface{}{},
-		"count":   0,
+		"plugins": plugins,
+		"failed":  failed,
 	})
 }
 

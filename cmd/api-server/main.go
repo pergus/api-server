@@ -16,6 +16,7 @@
 //
 // At this point, plugins can be added to the plugins/ directory,
 // and they will be loaded automatically without restarting the server.
+
 package main
 
 import (
@@ -170,6 +171,9 @@ func main() {
 	// This watches the plugins/ directory for new .so files
 	log.Println("Starting plugin system...")
 	loader := plugins.NewLoader("./plugins", server.Registry(), server.Scheme())
+
+	// Set the plugin provider for the router.
+	server.Router().SetPluginProvider(loader)
 
 	// Load any existing plugins
 	log.Println("Scanning for existing plugins...")

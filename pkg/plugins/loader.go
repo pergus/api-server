@@ -1,4 +1,11 @@
 // pkg/plugins/loader.go
+//
+// This file implements the plugin loader for the API server. The Loader
+// watches a specified directory for new plugin files (.so) and loads them
+// dynamically at runtime. It tracks loaded plugins, handles registration of
+// their resources, and provides information about loaded and failed plugins.
+// The Loader demonstrates the server's runtime extensibility without requiring
+// a restart when new plugins are added.
 
 package plugins
 
@@ -29,7 +36,8 @@ type Loader struct {
 	scheme    api.Scheme
 	mu        sync.RWMutex
 	loaded    map[string]*LoadedPlugin
-	seen      map[string]bool
+	failed    map[string]error
+	stopOnce  sync.Once
 	stopChan  chan struct{}
 }
 
@@ -48,14 +56,42 @@ func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Load
 		registry:  registry,
 		scheme:    scheme,
 		loaded:    make(map[string]*LoadedPlugin),
-		seen:      make(map[string]bool),
+		failed:    make(map[string]error),
 		stopChan:  make(chan struct{}),
 	}
+}
+
+// IsLoaded checks if a plugin is already loaded by path.
+func (l *Loader) IsLoaded(path string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	for _, plugin := range l.loaded {
+		if plugin.Path == path {
+			return true
+		}
+	}
+
+	return false
+}
+
+// HasFailed checks if a plugin has failed to load previously.
+func (l *Loader) HasFailed(path string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	_, exists := l.failed[path]
+	return exists
 }
 
 // LoadPlugin loads a single plugin from a file.
 // Returns error if the plugin is invalid.
 func (l *Loader) LoadPlugin(path string) error {
+
+	if l.IsLoaded(path) {
+		return fmt.Errorf("plugin already loaded: %s", path)
+	}
+
 	log.Printf("Loading plugin from %s", path)
 
 	// Open the plugin
@@ -71,10 +107,6 @@ func (l *Loader) LoadPlugin(path string) error {
 	}
 
 	// Assert it's a Plugin
-	//p, ok := pluginSym.(Plugin)
-	//if !ok {
-	//	return fmt.Errorf("Plugin symbol is not of type Plugin")
-	//}
 	pluginPtr, ok := pluginSym.(*Plugin)
 	if !ok {
 		return fmt.Errorf("Plugin symbol is not of type *Plugin")
@@ -113,6 +145,8 @@ func (l *Loader) UnloadPlugin(name string) error {
 	delete(l.loaded, name)
 	l.mu.Unlock()
 
+	log.Printf("Unloading plugin: %s", name)
+
 	// Call the plugin's Unregister
 	return loaded.Plugin.Unregister(l.registry)
 }
@@ -125,21 +159,17 @@ func (l *Loader) Watch(interval time.Duration) {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
-		//lastSeen := make(map[string]bool)
-
 		for {
 			select {
 			case <-l.stopChan:
 				log.Println("Stopping plugin watcher")
 				return
 			case <-ticker.C:
-				//l.scanPlugins(lastSeen)
 				l.scanPlugins()
 			}
 		}
 	}()
 }
-
 
 // scanPlugins looks for new .so files in the plugin directory.
 func (l *Loader) scanPlugins() {
@@ -172,22 +202,20 @@ func (l *Loader) scanPlugins() {
 
 		path := filepath.Join(l.pluginDir, entry.Name())
 
-		l.mu.Lock()
-
-		alreadySeen := l.seen[path]
-
-		if !alreadySeen {
-			l.seen[path] = true
+		if l.IsLoaded(path) {
+			continue
 		}
 
-		l.mu.Unlock()
-
-		if alreadySeen {
+		if l.HasFailed(path) {
 			continue
 		}
 
 		if err := l.LoadPlugin(path); err != nil {
-			log.Printf("Failed to load plugin %s: %v", path, err)
+			l.mu.Lock()
+			l.failed[path] = err
+			l.mu.Unlock()
+			log.Printf("Failed to load plugin... %s: %v", path, err)
+			continue
 		}
 	}
 }
@@ -199,24 +227,44 @@ func (l *Loader) Scan() {
 
 // Stop stops the plugin watcher.
 func (l *Loader) Stop() {
-	close(l.stopChan)
+	// Signal the watcher to stop
+	// Use sync.Once to ensure we only close the channel once
+	l.stopOnce.Do(func() {
+		close(l.stopChan)
+	})
 }
 
-// ListLoaded returns all loaded plugins.
-func (l *Loader) ListLoaded() []LoadedPlugin {
+// ListLoaded returns a list of all loaded plugins.
+func (l *Loader) ListLoaded() []api.PluginInfo {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	plugins := make([]LoadedPlugin, 0, len(l.loaded))
+	result := make([]api.PluginInfo, 0, len(l.loaded))
+
 	for _, p := range l.loaded {
-		plugins = append(plugins, *p)
+		result = append(result, api.PluginInfo{
+			Name:   p.Plugin.Name(),
+			Path:   p.Path,
+			Loaded: p.Loaded.Format("2006-01-02T15:04:05"),
+		})
 	}
-	return plugins
+
+	return result
 }
 
-// LoadedCount returns the number of loaded plugins.
-func (l *Loader) LoadedCount() int {
+// ListFailed returns a list of all plugins that failed to load.
+func (l *Loader) ListFailed() []api.FailedPluginInfo {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return len(l.loaded)
+
+	result := make([]api.FailedPluginInfo, 0, len(l.failed))
+
+	for path, err := range l.failed {
+		result = append(result, api.FailedPluginInfo{
+			Path:  path,
+			Error: err.Error(),
+		})
+	}
+
+	return result
 }

@@ -9,7 +9,6 @@ echo "Building plugins..."
 
 # Build invoices plugin
 echo "Building invoices plugin..."
-#go build -buildmode=plugin -o invoices/invoices.so ./invoices/main.go
 go build -buildmode=plugin -o bin/plugins/invoices.so ./plugins/invoices
 
 echo "All plugins built successfully!"

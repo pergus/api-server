@@ -1,4 +1,11 @@
 // cmd/apictl/client.go
+//
+// This file defines the Client struct and its methods for interacting with the
+// dynamic API server. The Client provides functions to list resources, retrieve
+// specific resources, create, update, and delete resources, as well as manage
+// Custom Resource Definitions (CRDs) and plugins. It communicates with the API
+// server over HTTP and handles JSON encoding/decoding of requests and responses.
+
 package main
 
 import (
@@ -11,6 +18,23 @@ import (
 	"strings"
 	"time"
 )
+
+type PluginInfo struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Loaded string `json:"loaded"`
+}
+
+type FailedPluginInfo struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+type PluginList struct {
+	Plugins []PluginInfo       `json:"plugins"`
+	Count   int                `json:"count"`
+	Failed  []FailedPluginInfo `json:"failed"`
+}
 
 // Client communicates with the dynamic API server.
 type Client struct {
@@ -210,34 +234,49 @@ func (c *Client) DeleteCRD(crdName string) error {
 //
 
 // ListPlugins lists all loaded plugins.
-func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
+//func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
+//	resp, err := c.get("/plugins")
+//	if err != nil {
+//		return nil, 0, err
+//	}
+//
+//	var result map[string]interface{}
+//	if err := json.Unmarshal(resp, &result); err != nil {
+//		return nil, 0, err
+//	}
+//
+//	plugins, ok := result["plugins"].([]interface{})
+//	if !ok {
+//		return []map[string]interface{}{}, 0, nil
+//	}
+//
+//	count := 0
+//	if v, ok := result["count"].(float64); ok {
+//		count = int(v)
+//	}
+//
+//	res := make([]map[string]interface{}, 0, len(plugins))
+//	for _, plugin := range plugins {
+//		if m, ok := plugin.(map[string]interface{}); ok {
+//			res = append(res, m)
+//		}
+//	}
+//	return res, count, nil
+//}
+
+// ListPlugins lists loaded and failed plugins.
+func (c *Client) ListPlugins() (*PluginList, error) {
 	resp, err := c.get("/plugins")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	var result map[string]interface{}
+	var result PluginList
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	plugins, ok := result["plugins"].([]interface{})
-	if !ok {
-		return []map[string]interface{}{}, 0, nil
-	}
-
-	count := 0
-	if v, ok := result["count"].(float64); ok {
-		count = int(v)
-	}
-
-	res := make([]map[string]interface{}, 0, len(plugins))
-	for _, plugin := range plugins {
-		if m, ok := plugin.(map[string]interface{}); ok {
-			res = append(res, m)
-		}
-	}
-	return res, count, nil
+	return &result, nil
 }
 
 // -----------------------------------------------------------------------------
