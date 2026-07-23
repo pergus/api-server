@@ -7105,42 +7105,30 @@ echo "All plugins built successfully!"
 mkdir bin
 go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apiclt ./cmd/apiclt
-```
 
-```bash
 # Build the example plugins.
 chmod +x build_plugins.sh
 ./build_plugins.sh
-```
 
-```bash
 # Start the API server.
 # The server must be started from the directory that contains the plugins directory
 # so that the plugin loader can discover the compiled .so files.
 cd bin
 ./api-server
-```
 
-```bash
 # In another terminal, wait a few seconds for the plugin watcher to load the plugin.
 # The server log should show:
 # Successfully loaded plugin: invoices
 
 # Verify that the plugin is loaded.
 ./apiclt plugins
-```
 
-```bash
 # Verify that the new resource provided by the plugin is available.
 ./apiclt api-resources
-```
 
-```bash
 # Create an invoice using the dynamically registered resource.
 ./apiclt create -f examples/invoice-1.json
-```
 
-```bash
 # Retrieve the created invoice.
 ./apiclt get invoices
 ```
