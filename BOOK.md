@@ -6284,23 +6284,60 @@ func (l *Loader) LoadedCount() int {
 	return len(l.loaded)
 }
 
-
 ```
 
-The loader completes the extension model introduced in previous chapters.
-Resources can now enter the server through three different paths: built-in
-registrations compiled into the application, CRDs created dynamically through
-the API, and external plugins loaded at runtime. All three paths converge on the
-same registry-driven architecture, which is what allows the server to remain
-generic while its capabilities continue to expand.
+The `listPlugins` endpoint provides the foundation for exposing plugin state
+through the API. The current implementation is intentionally minimal and returns
+an empty collection because the router has not yet been connected to the plugin
+loader. In a complete deployment, this endpoint would receive access to the
+loader instance and return the metadata maintained by `ListLoaded()`, including
+plugin names, load paths, and activation times.
 
+This separation is intentional. The router should not manage plugin lifecycle
+directly; it should only expose information provided by the component
+responsible for managing plugins. The loader owns discovery and lifecycle
+operations, while the API layer provides visibility into that state.
 
-** Router ***
-The `listPlugins` method is included as a placeholder for future extension.
-Plugins will be introduced later, but the route is registered now so the API
-structure is ready for that feature.
+**Listing 12.3 — `pkg/api/router.go` (plugin)**
+```go
+// -----------------------------------------------------------------------------
+// Plugins
+//
 
+// listPlugins handles GET /plugins
+// Returns information about loaded plugins (framework endpoint for future enhancement)
+func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
+	// For now, return a simple response structure
+	// In the future, this will be connected to the plugin loader
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"plugins": []interface{}{},
+		"count":   0,
+	})
+}
+```
+
+With the plugin system in place, resources can now enter the API server through
+three different mechanisms:
+
+1. Built-in resources registered when the server starts.
+2. Dynamically created resource definitions such as CRDs.
+3. External plugins loaded from compiled extensions.
+
+All three mechanisms ultimately use the same registry and scheme abstractions.
+This is the key architectural property that allows the server to remain generic:
+new functionality is added by contributing registrations rather than by
+modifying routing, storage, or API logic.
+
+The plugin system therefore extends the existing resource model rather than
+creating a separate extension framework. A resource provided by a plugin is
+handled by the same discovery, CRUD processing, serialization, authorization,
+and client compatibility mechanisms as every other resource in the server.
 
 
 ### An example plugin
