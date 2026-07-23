@@ -6651,6 +6651,48 @@ future implementation that satisfies `PluginProvider` can be substituted without
 modifying the routing code.
 
 
+### Server Router Accessor
+
+The plugin integration introduced a new relationship between the server startup
+code and the router. The loader must be provided to the router through the
+`PluginProvider` interface, but the server should remain the component that owns
+and constructs the router instance.
+
+Rather than exposing the server's internal fields, the server provides a small
+accessor method that returns the configured router. This keeps the `Server`
+structure encapsulated while allowing application startup code to perform
+additional configuration after the router has been created.
+
+The accessor is intentionally simple. It does not create a new router or modify
+the existing routing configuration; it only provides controlled access to the
+router that already belongs to the server.
+
+**Listing 12.6 - `pkg/api/server.go` (Router)**
+```go
+// Router returns the HTTP router.
+func (s *Server) Router() *Router {
+	return s.router
+}
+
+```
+
+With this method available, the startup sequence can now inject optional
+components into the router without requiring the server to know about every
+extension mechanism. The plugin loader can be created by the application,
+provided to the router as a PluginProvider, and the router remains dependent
+only on the abstraction it needs.
+
+This preserves the separation established earlier in the chapter:
+
+* The server owns the router and core API components.
+* The loader owns plugin discovery and lifecycle management.
+* The router only depends on the PluginProvider interface.
+
+The next step is to connect these components during server startup by creating
+the loader, injecting it into the router, scanning existing plugins, and
+starting the background watcher.
+
+
 ### Initializing the plugin system
 
 The final step is to connect the server, router, and loader during application
@@ -6664,7 +6706,7 @@ that already exist before starting the background watcher that detects newly
 added plugins. Add the code in Listing 12.6 below before the goroutine call
 in `cmd/api-server/main.go`.
 
-**Listing 12.6 - `cmd/api-server/main.go` (SetPluginProvider)**
+**Listing 12.7 - `cmd/api-server/main.go` (SetPluginProvider)**
 ```go
 // Create plugin loader
 // This watches the plugins/ directory for new .so files
@@ -6702,7 +6744,7 @@ The client mirrors the server's public data structures rather than importing
 them directly. This keeps the client independent of the server implementation
 while ensuring that the JSON response can be decoded into strongly typed values.
 
-**Listing 12.7 - `cmd/apiclt/client.go` (PluginList)**
+**Listing 12.8 - `cmd/apiclt/client.go` (PluginList)**
 ```go
 // PluginInfo contains public plugin information.
 type PluginInfo struct {
@@ -6732,7 +6774,7 @@ retrieves the plugin information from the server. This method follows the same
 pattern as the other client operations by issuing an HTTP request, decoding the
 JSON response, and returning the populated structure to the caller.
 
-**Listing 12.8 - `cmd/apiclt/client.go` (ListPlugins)**
+**Listing 12.9 - `cmd/apiclt/client.go` (ListPlugins)**
 ```go
 // -----------------------------------------------------------------------------
 // Plugins
@@ -6765,7 +6807,7 @@ failures are shown separately so administrators can quickly identify build or
 compatibility problems. This provides a simple operational view of the plugin
 subsystem without requiring direct access to the server logs.
 
-**Listing 12.9 - `cmd/apiclt/commands.go` (cmdPlugins)**
+**Listing 12.10 - `cmd/apiclt/commands.go` (cmdPlugins)**
 ```go
 // cmdPlugins lists all loaded and failed plugins
 func cmdPlugins(c *Client) {
@@ -6825,7 +6867,6 @@ The router can now expose plugin information without knowing anything about the
 loader implementation.
 
 
-
 ### An example plugin
 
 The plugin system becomes much clearer when looking at a complete example. A
@@ -6855,6 +6896,7 @@ type Invoice struct {
 	Amount     float64 `json:"amount"`
 	Status     string  `json:"status"`
 }
+
 ```
 
 This type belongs entirely to the plugin. The core API server does not need to
@@ -6902,6 +6944,7 @@ The final variable is the most important part of the plugin:
 var Plugin plugins.Plugin = &InvoicePlugin{
 	resource: NewInvoiceResource(),
 }
+
 ```
 
 The name `Plugin` is not arbitrary. It is the well-known symbol that the loader
@@ -6914,8 +6957,7 @@ resource abstraction and the plugin lifecycle. Once loaded, their resource
 automatically receives the same discovery, CRUD handling, middleware, and client
 support as every other resource in the system.
 
-**Listing 12.10 — `plugins/invoices/main.go`**
-
+**Listing 12.11 — `plugins/invoices/main.go`**
 ```go
 // plugins/invoices/main.go
 //
@@ -7021,7 +7063,6 @@ var Plugin plugins.Plugin = &InvoicePlugin{
 	resource: NewInvoiceResource(),
 }
 
-
 ```
 
 This example demonstrates the final goal of the architecture: the API server no
@@ -7031,7 +7072,7 @@ framework provides the common machinery, while extensions provide only the
 pieces that are unique to them. 
 
 
-**Listing 12.11 — `build_plugins.sh`**
+**Listing 12.12 — `build_plugins.sh`**
 ```bash
 #!/bin/bash
 
