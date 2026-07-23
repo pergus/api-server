@@ -6052,8 +6052,8 @@ Unloading is intentionally more limited than loading. Go's native plugin system
 does not support unloading shared objects from memory after they have been
 opened. The framework therefore treats unloading as a logical operation: it
 removes the plugin's registered resources from the API registry by calling
-`Unregister(...)`. The code remains loaded inside the process, but the API
-server no longer exposes the plugin's functionality.
+`Unregister(...)`. The plugin code remains loaded inside the process, but the
+API server no longer exposes the plugin's functionality.
 
 This distinction is important when designing plugin systems in Go. Loading a
 plugin is a true runtime extension; unloading is a cleanup operation that
