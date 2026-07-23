@@ -1,10 +1,11 @@
 // pkg/resources/orders.go
 //
-// This file defines the Order resource type and its associated Resource implementation.
-// The Order resource represents an order in an e-commerce system, with fields for ID,
-// user ID, product IDs, status, and total amount. The OrderResource struct implements
-// the Resource interface, providing methods to create new Order objects and manage
-// their storage using an in-memory storage backend.
+// This file defines the Order resource type and its associated Resource
+// implementation. The Order resource represents an order in an e-commerce
+// system, with fields for ID, user ID, product IDs, status, and total amount.
+// The OrderResource struct implements the Resource interface, providing methods
+// to create new Order objects and manage their storage using an in-memory
+// storage backend.
 
 package resources
 

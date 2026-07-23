@@ -2,9 +2,9 @@
 //
 // This file defines the Registry interface and its implementation for managing
 // API resources in the dynamic API server. The Registry is responsible for
-// keeping track of all known resources, allowing for registration, unregistration,
-// lookup, and listing of resources. It is thread-safe and supports concurrent
-// access, enabling dynamic resource management at runtime.
+// keeping track of all known resources, allowing for registration,
+// unregistration, lookup, and listing of resources. It is thread-safe and
+// supports concurrent access, enabling dynamic resource management at runtime.
 
 package api
 
@@ -22,9 +22,9 @@ import (
 // - Is thread-safe for concurrent access
 // - Never requires HTTP router rebuilding
 //
-// This is exactly how the API server manages resources dynamically.
-// When you define a CRD (Custom Resource Definition), the API server registers it
-// in the resource registry. The next request to /api includes it.
+// This is exactly how the API server manages resources dynamically. When you
+// define a CRD (Custom Resource Definition), the API server registers it in the
+// resource registry. The next request to /api includes it.
 type Registry interface {
 	// Register adds a resource to the registry.
 	// Called by plugins or the main server during initialization.

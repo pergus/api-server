@@ -319,6 +319,14 @@ concrete types such as `User` or `Order`; it only interacts with `Resource`.
 
 ```go
 // pkg/api/resource.go
+//
+// This file defines the Resource interface, which is the contract that all API
+// resources must implement in order to be managed by the dynamic API server.
+// The Resource interface allows the API server to handle arbitrary resource
+// types, including those defined at runtime via Custom Resource Definitions
+// (CRDs). Each resource provides methods for retrieving its name, creating new
+// instances, and accessing its storage layer.
+
 package api
 
 // Resource defines the interface that all API resources must implement.
@@ -348,6 +356,7 @@ type Resource interface {
 	Storage() Storage
 }
 
+
 ```
 
 ### The Storage interface
@@ -365,13 +374,21 @@ CRUD lifecycle.
 
 ```go
 // pkg/api/storage.go
+//
+// This file defines the Storage interface and an in-memory implementation
+// (MemoryStorage). The Storage interface abstracts the persistence layer for
+// resources, allowing different backends (in-memory, SQL, NoSQL, etc.) to be
+// used interchangeably. MemoryStorage is a simple thread-safe in-memory storage
+// that supports basic CRUD operations and integrates with the EventBus to
+// publish events on resource changes.
+
 package api
 
 import (
 	"encoding/json"
 	"fmt"
 	"sync"
-	// "time" (Added in Chapter 13)
+	"time"
 )
 
 // Storage defines the persistence interface for all resources.
@@ -384,7 +401,8 @@ import (
 // - Cloud storage (S3, Google Cloud Storage, etc.)
 // - Distributed systems (etcd, Consul, etc.)
 //
-// This is identical to how the API server abstracts storage behind StorageInterface.
+// This is identical to how the API server abstracts storage behind
+// StorageInterface.
 type Storage interface {
 	// List returns all stored objects.
 	List() ([]any, error)
@@ -417,7 +435,7 @@ type Storage interface {
 type MemoryStorage struct {
 	mu       sync.RWMutex
 	items    map[string]any
-	//eventBus EventBus (Added in Chapter 13)
+	eventBus EventBus
 	resource string
 }
 
@@ -425,10 +443,11 @@ type MemoryStorage struct {
 func NewMemoryStorage() Storage {
 	return &MemoryStorage{
 		items:    make(map[string]any),
-		//eventBus: nil, (Added in Chapter 13)
+		eventBus: nil,
 		resource: "",
 	}
 }
+
 ```
 
 Now let's look at the five methods that make up the storage interface. Each
@@ -686,6 +705,13 @@ safely and efficiently.
 
 ```go
 // pkg/api/registry.go
+//
+// This file defines the Registry interface and its implementation for managing
+// API resources in the dynamic API server. The Registry is responsible for
+// keeping track of all known resources, allowing for registration,
+// unregistration, lookup, and listing of resources. It is thread-safe and
+// supports concurrent access, enabling dynamic resource management at runtime.
+
 package api
 
 import (
@@ -702,9 +728,9 @@ import (
 // - Is thread-safe for concurrent access
 // - Never requires HTTP router rebuilding
 //
-// This is exactly how the API server manages resources dynamically.
-// When you define a CRD (Custom Resource Definition), the API server registers it
-// in the resource registry. The next request to /api includes it.
+// This is exactly how the API server manages resources dynamically. When you
+// define a CRD (Custom Resource Definition), the API server registers it in the
+// resource registry. The next request to /api includes it.
 type Registry interface {
 	// Register adds a resource to the registry.
 	// Called by plugins or the main server during initialization.
@@ -832,6 +858,7 @@ func (r *SimpleRegistry) Count() int {
 	return len(r.resources)
 }
 
+
 ```
 
 ### The Scheme
@@ -856,6 +883,14 @@ infrastructure code.
 
 ```go
 // pkg/api/scheme.go
+//
+// This file defines the Scheme interface and its implementation for managing
+// type registration and object creation in the dynamic API server. The Scheme
+// allows the API server to create instances of registered types without
+// directly importing or knowing about those types, enabling support for
+// arbitrary resource types defined at runtime via Custom Resource Definitions
+// (CRDs) or plugins.
+
 package api
 
 import (
@@ -863,10 +898,11 @@ import (
 	"sync"
 )
 
-// ObjectFactory is a function that creates a new, empty instance of an object type.
+// ObjectFactory is a function that creates a new, empty instance of an object
+// type.
 //
-// The generic HTTP handlers cannot directly reference types like User or Product.
-// Instead, they ask the Scheme to create an empty instance by name.
+// The generic HTTP handlers cannot directly reference types like User or
+// Product. Instead, they ask the Scheme to create an empty instance by name.
 // This is loaded into and marshalled with incoming JSON.
 type ObjectFactory func() any
 
@@ -874,7 +910,8 @@ type ObjectFactory func() any
 //
 // This maps between:
 // - Type names (strings) -> Constructor functions
-// - This allows the API server to create objects without importing or knowing about types
+// - This allows the API server to create objects without importing or knowing
+//   about types
 //
 // The Scheme is how the generic handlers avoid importing resource types.
 // When a request arrives for /api/users, the handler asks:
@@ -1060,10 +1097,16 @@ object is created, `CreatedResponse` returns a confirmation message and the new
 object's ID. Updates and deletes only need to confirm that the operation
 completed, so their responses contain a message field.
 
-Finally, `DiscoveryResponse` is used when the system needs to describe what
-resources are available. It returns the list of registered resources along with
-a timestamp, giving clients a way to discover the current capabilities of the
-running application.
+`DiscoveryResponse` is used when the system needs to describe what resources are
+available. It returns the list of registered resources along with a timestamp,
+giving clients a way to discover the current capabilities of the running
+application.
+
+Finally, `RequestTiming`, is used to capture capture metrics about an individual
+API request. It records when the request started, the HTTP method and path that
+were handled, the resulting status code, and the total time spent processing the
+request. This provides visibility into request performance and helps diagnose
+latency or operational issues in the running application.
 
 These response types form the common language between the router and its
 clients. With the response format defined up front, the router can focus on its
@@ -1183,6 +1226,15 @@ dynamic design.
 
 ```go
 // pkg/api/router.go
+//
+//	This file implements the HTTP router for the dynamic API server. The router
+//	is responsible for dispatching incoming HTTP requests to the appropriate
+//	handlers based on the request path and method. It supports generic routing
+//	for all registered resources, including built-in resources and dynamically
+//	added Custom Resource Definitions (CRDs). The router also provides discovery
+//	endpoints for clients to list available resources and APIs, as well as
+//	endpoints for managing plugins.
+
 package api
 
 import (
@@ -1218,15 +1270,16 @@ import (
 // This means new resources are immediately available after registration—
 // no router rebuild, no server restart, no HTTP listener restart.
 type Router struct {
-	registry    Registry
-	scheme      Scheme
+	registry       Registry
+	scheme         Scheme
 	//crdRegistry CRDRegistry (Added in Chapter 10)
 	//eventBus    EventBus    (Added in Chapter 13)
-	mux         *http.ServeMux
+	eventBus       EventBus
+	mux            *http.ServeMux
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme /*, crdRegistry CRDRegistry, eventBus EventBus */) *Router {
+func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
@@ -1412,6 +1465,7 @@ func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource 
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
+
 ```
 
 ### The five generic handlers
@@ -1478,12 +1532,10 @@ factory function in the scheme.
 // Supports ?watch=true for streaming events instead of listing.
 func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
 	// Check if client is requesting to watch events
-	/* Addd in Chapter 14
 	if req.URL.Query().Get("watch") == "true" {
 		r.watch(w, req, resource)
 		return
 	}
-	*/
 
 	// Normal list operation
 	objects, err := resource.Storage().List()
@@ -1623,6 +1675,7 @@ func extractIDFromObject(obj any) string {
 	}
 	return ""
 }
+
 ```
 
 ### Checkpoint
@@ -1968,6 +2021,12 @@ production environment.
 
 ```go
 // pkg/api/middleware.go
+//
+// This file defines middleware functions for the dynamic API server. Middleware
+// functions wrap HTTP handlers to provide additional functionality such as
+// logging, recovery from panics, timing, and CORS support. The Chain function
+// allows multiple middleware to be applied in a specified order.
+
 package api
 
 import (
@@ -2148,6 +2207,14 @@ be registered and served.
 
 ```go
 // pkg/api/server.go
+//
+// This file implements the core HTTP API server for the dynamic API framework.
+// The Server struct manages the resource registry, type scheme, router, and
+// event bus. It provides methods to start and stop the server, register
+// resources and types at runtime, and handle Custom Resource Definitions
+// (CRDs). The server supports dynamic registration of resources and types
+// without requiring a restart, enabling runtime extensibility through plugins.
+
 package api
 
 import (
@@ -2396,6 +2463,13 @@ this example self-contained.
 
 ```go
 // pkg/resources/users.go
+//
+// This file defines the User resource type and its associated Resource implementation.
+// The User resource represents a user in an e-commerce system, with fields for ID,
+// name, email, and active status. The UserResource struct implements the Resource
+// interface, providing methods to create new User objects and manage their storage
+// using an in-memory storage backend.
+
 package resources
 
 import (
@@ -2449,6 +2523,14 @@ focused on API behavior.
 
 ```go
 // pkg/resources/products.go
+//
+// This file defines the Product resource type and its associated Resource
+// implementation. The Product resource represents a product in an e-commerce
+// system, with fields for ID, name, description, price, and stock count. The
+// ProductResource struct implements the Resource interface, providing methods
+// to create new Product objects and manage their storage using an in-memory
+// storage backend.
+
 package resources
 
 import (
@@ -2503,6 +2585,14 @@ contract and storage abstraction as the previous examples.
 
 ```go
 // pkg/resources/orders.go
+//
+// This file defines the Order resource type and its associated Resource
+// implementation. The Order resource represents an order in an e-commerce
+// system, with fields for ID, user ID, product IDs, status, and total amount.
+// The OrderResource struct implements the Resource interface, providing methods
+// to create new Order objects and manage their storage using an in-memory
+// storage backend.
+
 package resources
 
 import (
@@ -2657,6 +2747,7 @@ func main() {
 	}
 	log.Println("Server stopped")
 }
+
 ```
 
 We will add Custom Resource Defitions (Chapter 10), plugin loading (Chapter 12)
@@ -2750,6 +2841,13 @@ conventions, the same client methods can communicate with it.
 
 ```go
 // cmd/apictl/client.go
+//
+// This file defines the Client struct and its methods for interacting with the
+// dynamic API server. The Client provides functions to list resources, retrieve
+// specific resources, create, update, and delete resources, as well as manage
+// Custom Resource Definitions (CRDs) and plugins. It communicates with the API
+// server over HTTP and handles JSON encoding/decoding of requests and responses.
+
 package main
 
 import (
@@ -2994,35 +3092,19 @@ func (c *Client) DeleteCRD(crdName string) error {
 // Plugins
 //
 
-// ListPlugins lists all loaded plugins.
-func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
+// ListPlugins lists loaded and failed plugins.
+func (c *Client) ListPlugins() (*PluginList, error) {
 	resp, err := c.get("/plugins")
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	var result map[string]interface{}
+	var result PluginList
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	plugins, ok := result["plugins"].([]interface{})
-	if !ok {
-		return []map[string]interface{}{}, 0, nil
-	}
-
-	count := 0
-	if v, ok := result["count"].(float64); ok {
-		count = int(v)
-	}
-
-	res := make([]map[string]interface{}, 0, len(plugins))
-	for _, plugin := range plugins {
-		if m, ok := plugin.(map[string]interface{}); ok {
-			res = append(res, m)
-		}
-	}
-	return res, count, nil
+	return &result, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -3146,6 +3228,14 @@ documentation.
 
 ```go
 // cmd/apictl/main.go
+//
+// This file contains the main entry point for the apictl command-line interface
+// (CLI). It parses command-line arguments, initializes the API client, and
+// dispatches commands to the appropriate handlers. The CLI allows users to
+// interact with the dynamic API server, providing functionality to list
+// resources, retrieve specific resources, create or delete resources, manage
+// plugins, and more.
+
 package main
 
 import (
@@ -3232,6 +3322,13 @@ implementations are provided for commands that are not yet available.
 **Listing 8.4 — `cmd/apictl/commands.go` (temporary command placeholders)**
 ```go
 // cmd/apictl/commands.go
+//
+// This file contains the command-line interface (CLI) commands for interacting
+// with the API server. The commands allow users to list resources, retrieve
+// specific resources, create or delete resources, and manage plugins. The CLI
+// communicates with the API server over HTTP and provides a user-friendly way
+// to interact with the server's dynamic API capabilities.
+
 package main
 
 import (
@@ -3299,6 +3396,7 @@ func cmdExplain(c *Client, args []string) {
 func cmdWatch(c *Client, args []string) {
 	fmt.Println("watch command will be implemented in Chapter 14")
 }
+
 ```
 
 
@@ -3364,9 +3462,10 @@ consistent command-line interface.
 
 The `cmdPlugins` command retrieves information about the plugins currently
 loaded by the server. In addition to displaying the total number of plugins, it
-prints a table containing details about each one. Like the API group
-functionality, plugins are introduced later in the project, but the command
-structure already fits naturally into the rest of the CLI.
+prints a table containing details about each one. Any plugins that failed to
+load are also displayed. Like the API group functionality, plugins are
+introduced later in the project, but the command structure already fits
+naturally into the rest of the CLI.
 
 The `cmdGet` command is slightly more flexible because it supports two related
 operations. If only a resource name is provided, such as `apictl get users`, the
@@ -3408,6 +3507,13 @@ to extend as new server capabilities are added.
 
 ```go
 // cmd/apictl/commands.go
+//
+// This file contains the command-line interface (CLI) commands for interacting
+// with the API server. The commands allow users to list resources, retrieve
+// specific resources, create or delete resources, and manage plugins. The CLI
+// communicates with the API server over HTTP and provides a user-friendly way
+// to interact with the server's dynamic API capabilities.
+
 package main
 
 import (
@@ -3463,29 +3569,51 @@ func cmdAPIVersions(c *Client) {
 	w.Flush()
 }
 
-// cmdPlugins lists all loaded plugins
+// cmdPlugins lists all loaded and failed plugins
 func cmdPlugins(c *Client) {
-	plugins, count, err := c.ListPlugins()
+	result, err := c.ListPlugins()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Loaded Plugins: %d\n", count)
-	if len(plugins) == 0 {
+	fmt.Printf("Loaded Plugins: %d\n", len(result.Plugins))
+
+	if len(result.Plugins) == 0 {
 		fmt.Println("No plugins loaded")
-		return
+	} else {
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "NAME\tPATH\tLOADED")
+
+		for _, p := range result.Plugins {
+			fmt.Fprintf(w, "%s\t%s\t%s\n",
+				p.Name,
+				p.Path,
+				p.Loaded,
+			)
+		}
+
+		w.Flush()
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPATH\tLOADED")
-	for _, p := range plugins {
-		name, _ := p["name"].(string)
-		path, _ := p["path"].(string)
-		loaded, _ := p["loaded"].(string)
-		fmt.Fprintf(w, "%s\t%s\t%s\n", name, path, loaded)
+	if len(result.Failed) > 0 {
+		fmt.Println()
+		fmt.Printf("Failed Plugins: %d\n", len(result.Failed))
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+
+		fmt.Fprintln(w, "PATH\tERROR")
+
+		for _, p := range result.Failed {
+			fmt.Fprintf(w, "%s\t%s\n",
+				p.Path,
+				p.Error,
+			)
+		}
+
+		w.Flush()
 	}
-	w.Flush()
 }
 
 // cmdGet lists or retrieves a resource
@@ -3535,6 +3663,7 @@ func cmdGet(c *Client, args []string) {
 		fmt.Println(string(data))
 	}
 }
+
 ```
 
 ### Mutating commands
@@ -4324,6 +4453,12 @@ types to the existing generic API machinery.
 **Listing 10.1 — `pkg/api/crd.go`**
 ```go
 // pkg/api/crd.go
+//
+// This file defines the structures and interfaces for managing Custom Resource
+// Definitions (CRDs) in the dynamic API server. CRDs allow users to define new
+// resource types at runtime, enabling the API server to handle arbitrary
+// resources without requiring code changes or recompilation.
+
 package api
 
 import (
@@ -4541,6 +4676,14 @@ retrieve, and serialize a generic object.
 **Listing 10.2 - `pkg/api/dynamic.go` (Dynamic Objects)**
 ```go
 // pkg/api/dynamic.go
+//
+// This file defines the structures and interfaces for managing dynamic API
+// resources in the API server. Dynamic resources are those that are defined at
+// runtime via Custom Resource Definitions (CRDs). The DynamicObject struct
+// represents a generic API-like object that can hold arbitrary JSON data, and
+// the DynamicResource struct provides an implementation of the Resource
+// interface for CRD-based resources.
+
 package api
 
 import (
@@ -4664,6 +4807,7 @@ func (d *DynamicObject) MarshalJSON() ([]byte, error) {
 
 	return json.Marshal(result)
 }
+
 ```
 
 
@@ -5093,17 +5237,6 @@ The following changes initialize the CRD registry and connect it to the router.
 
 **Listing 10.6 — `pkg/api/server.go` (CRD registry integration)**
 ```go
-// pkg/api/server.go
-package api
-
-import (
-	"context"
-	"fmt"
-	"log"
-	"net/http"
-	"time"
-)
-
 // Server is the HTTP API server.
 type Server struct {
 	registry    Registry
@@ -5206,6 +5339,7 @@ type User struct {
 	Email     string `json:"email"`
 	IsActive  bool   `json:"is_active"`
 }
+
 ```
 
 The server registers it normally:
@@ -5218,6 +5352,7 @@ server.RegisterResource(userResource)
 server.RegisterType("users", func() any {
 	return &resources.User{}
 })
+
 ```
 
 The schema is then added separately:

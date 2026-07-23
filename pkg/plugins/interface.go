@@ -2,7 +2,8 @@
 //
 // Package plugins provides a plugin loading system for dynamic API extensibility.
 //
-// Plugins are compiled Go code that register resources with the API server at runtime.
+// Plugins are compiled Go code that register resources with the API server at
+// runtime.
 //
 // Key insights:
 // - Plugins are loaded from .so files (compiled shared objects)

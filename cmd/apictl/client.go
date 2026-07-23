@@ -233,37 +233,6 @@ func (c *Client) DeleteCRD(crdName string) error {
 // Plugins
 //
 
-// ListPlugins lists all loaded plugins.
-//func (c *Client) ListPlugins() ([]map[string]interface{}, int, error) {
-//	resp, err := c.get("/plugins")
-//	if err != nil {
-//		return nil, 0, err
-//	}
-//
-//	var result map[string]interface{}
-//	if err := json.Unmarshal(resp, &result); err != nil {
-//		return nil, 0, err
-//	}
-//
-//	plugins, ok := result["plugins"].([]interface{})
-//	if !ok {
-//		return []map[string]interface{}{}, 0, nil
-//	}
-//
-//	count := 0
-//	if v, ok := result["count"].(float64); ok {
-//		count = int(v)
-//	}
-//
-//	res := make([]map[string]interface{}, 0, len(plugins))
-//	for _, plugin := range plugins {
-//		if m, ok := plugin.(map[string]interface{}); ok {
-//			res = append(res, m)
-//		}
-//	}
-//	return res, count, nil
-//}
-
 // ListPlugins lists loaded and failed plugins.
 func (c *Client) ListPlugins() (*PluginList, error) {
 	resp, err := c.get("/plugins")
@@ -280,66 +249,8 @@ func (c *Client) ListPlugins() (*PluginList, error) {
 }
 
 // -----------------------------------------------------------------------------
-// Helper methods
+// Watcher
 //
-
-func (c *Client) get(path string) ([]byte, error) {
-	return c.request("GET", path, nil)
-}
-
-func (c *Client) post(path string, body []byte) ([]byte, error) {
-	return c.request("POST", path, body)
-}
-
-func (c *Client) put(path string, body []byte) ([]byte, error) {
-	return c.request("PUT", path, body)
-}
-
-func (c *Client) delete(path string) ([]byte, error) {
-	return c.request("DELETE", path, nil)
-}
-
-// request performs an HTTP request with the given method, path, and body.
-func (c *Client) request(method, path string, body []byte) ([]byte, error) {
-	url := c.baseURL + path
-	var req *http.Request
-	var err error
-
-	if body != nil {
-		req, err = http.NewRequest(method, url, bytes.NewReader(body))
-	} else {
-		req, err = http.NewRequest(method, url, nil)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode >= 400 {
-		var errResp map[string]interface{}
-		if err := json.Unmarshal(respBody, &errResp); err == nil {
-			if msg, ok := errResp["error"].(string); ok {
-				return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
-			}
-		}
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	return respBody, nil
-}
 
 // WatchEvent represents a single event from the watch stream.
 type WatchEvent struct {
@@ -459,4 +370,66 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 		Events: events,
 		Errors: errors,
 	}, nil
+}
+
+// -----------------------------------------------------------------------------
+// Helper methods
+//
+
+func (c *Client) get(path string) ([]byte, error) {
+	return c.request("GET", path, nil)
+}
+
+func (c *Client) post(path string, body []byte) ([]byte, error) {
+	return c.request("POST", path, body)
+}
+
+func (c *Client) put(path string, body []byte) ([]byte, error) {
+	return c.request("PUT", path, body)
+}
+
+func (c *Client) delete(path string) ([]byte, error) {
+	return c.request("DELETE", path, nil)
+}
+
+// request performs an HTTP request with the given method, path, and body.
+func (c *Client) request(method, path string, body []byte) ([]byte, error) {
+	url := c.baseURL + path
+	var req *http.Request
+	var err error
+
+	if body != nil {
+		req, err = http.NewRequest(method, url, bytes.NewReader(body))
+	} else {
+		req, err = http.NewRequest(method, url, nil)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 400 {
+		var errResp map[string]interface{}
+		if err := json.Unmarshal(respBody, &errResp); err == nil {
+			if msg, ok := errResp["error"].(string); ok {
+				return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, msg)
+			}
+		}
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
 }

@@ -2,9 +2,10 @@
 //
 // This file defines the Scheme interface and its implementation for managing
 // type registration and object creation in the dynamic API server. The Scheme
-// allows the API server to create instances of registered types without directly
-// importing or knowing about those types, enabling support for arbitrary resource
-// types defined at runtime via Custom Resource Definitions (CRDs) or plugins.
+// allows the API server to create instances of registered types without
+// directly importing or knowing about those types, enabling support for
+// arbitrary resource types defined at runtime via Custom Resource Definitions
+// (CRDs) or plugins.
 
 package api
 
@@ -13,18 +14,20 @@ import (
 	"sync"
 )
 
-// ObjectFactory is a function that creates a new, empty instance of an object type.
+// ObjectFactory is a function that creates a new, empty instance of an object
+// type.
 //
-// The generic HTTP handlers cannot directly reference types like User or Product.
-// Instead, they ask the Scheme to create an empty instance by name.
+// The generic HTTP handlers cannot directly reference types like User or
+// Product. Instead, they ask the Scheme to create an empty instance by name.
 // This is loaded into and marshalled with incoming JSON.
 type ObjectFactory func() any
 
 // Scheme is a type registry and factory.
 //
 // This maps between:
-// - Type names (strings) -> Constructor functions
-// - This allows the API server to create objects without importing or knowing about types
+//   - Type names (strings) -> Constructor functions
+//   - This allows the API server to create objects without importing or knowing
+//     about types
 //
 // The Scheme is how the generic handlers avoid importing resource types.
 // When a request arrives for /api/users, the handler asks:

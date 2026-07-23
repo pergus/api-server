@@ -61,7 +61,7 @@ func cmdAPIVersions(c *Client) {
 	w.Flush()
 }
 
-// cmdPlugins lists all loaded plugins
+// cmdPlugins lists all loaded and failed plugins
 func cmdPlugins(c *Client) {
 	result, err := c.ListPlugins()
 	if err != nil {
