@@ -5590,9 +5590,8 @@ code.
 
 ### Goal
 
-Add Kubernetes-style discovery beyond `/api`: list API *groups* and the
-resources within a group and version. This is what lets clients understand the
-whole surface, including CRDs.
+Add API discovery to list groups and resources, allowing clients to understand
+the full API surface.
 
 The original `/api` endpoint introduced earlier provides a simple view of the
 server by returning the names of available resources. This is enough for basic
