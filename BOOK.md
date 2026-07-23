@@ -5679,10 +5679,6 @@ inside that part of the API hierarchy. A client does not need to know that
 invoices, reports, or any other custom resources were created after the server
 started. It can discover them by querying the API.
 
-The `listPlugins` method is included as a placeholder for future extension.
-Plugins will be introduced later, but the route is registered now so the API
-structure is ready for that feature.
-
 At this stage, the endpoint returns an empty plugin list with a consistent
 response shape. Future chapters will connect this endpoint to the plugin loader
 so clients can discover installed extensions in the same way they discover
@@ -5694,10 +5690,43 @@ hard-coded knowledge about available APIs. They can query discovery endpoints,
 learn the current API surface, and interact with resources that may not have
 existed when the client was written.
 
+The router setup only requires a small change to enable discovery. The discovery
+endpoints are registered alongside the existing /api endpoint and use the same
+router for all requests. These routes do not depend on the current contents of
+the resource registry; they remain fixed while the handlers inspect available
+resources at request time.
 
-**Listing 11.1 — `pkg/api/router.go` (discovery + plugins stub)**
-
+**Listing 11.2 — `pkg/api/router.go` (Setup)**
 ```go
+// Setup registers the generic routes.
+// These routes are created ONCE and never change, even when new resources are added.
+func (r *Router) Setup() {
+	// Discovery endpoints
+	r.mux.HandleFunc("/api", r.discovery)
+	r.mux.HandleFunc("/apis", r.discoverAPIs)
+	r.mux.HandleFunc("/apis/", r.discoverAPIPath)
+
+	// Plugin endpoint
+	//r.mux.HandleFunc("/plugins", r.listPlugins) (Added in Chapter 12)
+
+	// Catch-all handler for all resource and CRD operations
+	r.mux.HandleFunc("/", r.route)
+}
+
+```
+
+The discovery handlers provide the logic behind these routes. They build their
+responses from the current resource and CRD registries, which means the returned
+API surface always reflects the server's current state. Adding a new resource or
+CRD automatically becomes visible through discovery without requiring router
+changes.
+
+**Listing 11.2 — `pkg/api/router.go` (discovery + plugins stub)**
+```go
+// -----------------------------------------------------------------------------
+// API Discovery
+//
+
 // discoverAPIs handles GET /apis
 // Returns all API groups
 func (r *Router) discoverAPIs(w http.ResponseWriter, req *http.Request) {
@@ -5772,22 +5801,6 @@ func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// listPlugins handles GET /plugins
-// Returns information about loaded plugins (framework endpoint for future enhancement)
-func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// For now, return a simple response structure
-	// In the future, this will be connected to the plugin loader
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"plugins": []interface{}{},
-		"count":   0,
-	})
-}
 ```
 
 To make the discovery API present a complete picture of the server, the built-in
@@ -5873,6 +5886,12 @@ Clients can now discover groups and versions, not just flat names.
 ---
 
 ## Chapter 12: Go Plugins
+
+The `listPlugins` method is included as a placeholder for future extension.
+Plugins will be introduced later, but the route is registered now so the API
+structure is ready for that feature.
+
+
 
 ### Goal
 
