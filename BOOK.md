@@ -5696,7 +5696,7 @@ router for all requests. These routes do not depend on the current contents of
 the resource registry; they remain fixed while the handlers inspect available
 resources at request time.
 
-**Listing 11.2 — `pkg/api/router.go` (Setup)**
+**Listing 11.1 — `pkg/api/router.go` (Setup)**
 ```go
 // Setup registers the generic routes.
 // These routes are created ONCE and never change, even when new resources are added.
