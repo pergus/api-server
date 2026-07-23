@@ -5803,68 +5803,38 @@ func (r *Router) discoverAPIPath(w http.ResponseWriter, req *http.Request) {
 
 ```
 
-To make the discovery API present a complete picture of the server, the built-in
-resources can also be described through the same CRD metadata system used for
-dynamically created resources. This does not make the built-in resources dynamic
-— they are still compiled Go types registered through `RegisterResource` — but
-it gives clients a consistent way to discover their shape.
+The discovery API uses the CRD metadata registry as the common description layer
+for all resources. Built-in resources such as `User`, `Product`, and `Order`
+already have discovery definitions registered, while dynamically created
+resources add their definitions at runtime. This gives clients a consistent way
+to discover the API surface regardless of how a resource was created.
 
-Without these definitions, `/api` will still list the built-in resources because
-they exist in the normal resource registry. However, the richer discovery
-endpoints introduced in this chapter need additional metadata to describe things
-such as the API group, version, kind, and schema. Registering CRD-style
-descriptions for built-ins bridges that gap and allows tools such as `apictl
-explain` to display useful information for both built-in and runtime-created
-resources.
+These definitions do not change how resources are implemented. Built-in
+resources remain compiled Go types registered through `RegisterResource`, and
+CRDs continue to provide runtime-defined resources. The metadata only describes
+the resource for discovery purposes, including its API group, version, kind, and
+schema.
 
-The registration is intentionally lightweight. The schema is only descriptive
-metadata; it is not replacing Go structs, changing storage behavior, or altering
-how requests are handled. The existing `User`, `Product`, and `Order` resources
-continue to use their normal typed implementations. The CRD registry simply
-provides a discovery document that says, "this resource exists, this is its
-kind, and these are the fields clients can expect."
+When a client queries the discovery endpoints, it can use these definitions to
+understand both built-in and runtime-created resources. Tools such as *apictl
+explain* can present resource information without requiring special knowledge of
+which resources were compiled into the server and which were added later.
 
-For example, after registering the users resource, `main()` can add a discovery
-definition like this:
+The built-in resource definitions registered in the previous chapter now become
+part of the discovery API automatically. The same metadata used to describe
+runtime-created resources is used to describe built-in resources, allowing
+discovery clients to interact with both through the same endpoints.
 
-```go
-userCRD := &api.CRDDefinition{
-	Group:   "api.example.io",
-	Version: "v1",
-	Kind:    "User",
-	Plural:  "users",
-	Schema: map[string]interface{}{
-		"properties": map[string]interface{}{
-			"id": map[string]interface{}{
-				"type": "string",
-			},
-			"name": map[string]interface{}{
-				"type": "string",
-			},
-			"email": map[string]interface{}{
-				"type": "string",
-			},
-			"is_active": map[string]interface{}{
-				"type": "boolean",
-			},
-		},
-	},
-}
+Once registered, resources can be discovered consistently: clients can identify
+API groups, determine available versions, inspect schemas, and provide help
+information without needing to know whether a resource is built in or added
+dynamically.
 
-_ = server.CRDRegistry().RegisterCRD(userCRD)
-```
-
-The same pattern can be repeated for `Product` and `Order`. Once registered,
-discovery clients can treat these resources exactly like CRD-created resources:
-they can identify the API group, determine the available versions, inspect the
-schema, and present useful help information without needing special knowledge of
-the server's built-in types.
-
-This is an important architectural step. The server now has two complementary
-registration paths: compiled resources provide behavior, storage, and request
-handling, while discovery definitions provide a common description layer.
-Keeping these responsibilities separate is what allows the API surface to grow
-dynamically while preserving the simplicity of the original framework.
+The server now has two complementary registration paths: compiled resources
+provide behavior, storage, and request handling, while discovery definitions
+provide a common description layer. Keeping these responsibilities separate is
+what allows the API surface to grow dynamically while preserving the simplicity
+of the original framework.
 
 
 ### Checkpoint
