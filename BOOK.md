@@ -199,6 +199,7 @@ api-server/
 │   │   ├── types.go         # response envelopes (Chapter 5)
 │   │   ├── router.go        # generic router (Chapter 5, 10, 11, 14)
 │   │   ├── middleware.go    # HTTP middleware (Chapter 6)
+│   │   ├── plugins.go       # plugin provider interface (Chapter 12)
 │   │   ├── server.go        # server lifecycle (Chapter 6)
 │   │   ├── crd.go           # CRD registry (Chapter 10)
 │   │   ├── dynamic.go       # dynamic objects (Chapter 10)

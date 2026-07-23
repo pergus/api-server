@@ -74,7 +74,9 @@ EVENT: MODIFIED
 }
 ```
 
-The OrderController automatically processes orders, calculating totals and updating status. See `WATCH_ARCHITECTURE.md` and `WATCH_DEMO.md` for detailed explanation and complete walkthrough.
+The OrderController automatically processes orders, calculating totals and
+updating status. See `WATCH_ARCHITECTURE.md` and `WATCH_DEMO.md` for detailed
+explanation and complete walkthrough.
 
 ## Quick Start with Plugins
 
@@ -202,21 +204,12 @@ curl -X DELETE http://localhost:8080/api/users/alice | jq
 ### Build a Plugin
 
 ```bash
-cd plugins
-chmod +x build.sh
-./build.sh
+mkdir -p bin/plugins
+chmod +x build_plugins.sh
+./build_plugins.sh
 ```
 
-This builds the invoices plugin as `invoices/invoices.so`.
-
-### Load Plugin While Server Running
-
-**In another terminal:**
-
-```bash
-cp plugins/invoices/invoices.so plugins/
-```
-
+This builds the invoices plugin as `bin/plugins/invoices.so`.
 The server will detect the new plugin within 2 seconds and load it automatically.
 
 ### Verify Plugin Loaded
@@ -246,6 +239,7 @@ curl http://localhost:8080/api/invoices | jq
 
 1. Start the server:
    ```bash
+   cd bin
    ./api-server
    ```
 
@@ -257,22 +251,16 @@ curl http://localhost:8080/api/invoices | jq
 
 3. Build plugins:
    ```bash
-   cd plugins
-   ./build.sh
+   ./build_plugins.sh
    ```
 
-4. While server is running, copy plugin:
-   ```bash
-   cp plugins/invoices/invoices.so plugins/
-   ```
-
-5. Verify invoices appear in discovery (within 2 seconds):
+4. Verify invoices appear in discovery (within 2 seconds):
    ```bash
    curl http://localhost:8080/api | jq
    # Now shows: invoices, orders, products, users
    ```
 
-6. Use the new resource immediately:
+5. Use the new resource immediately:
    ```bash
    curl -X POST http://localhost:8080/api/invoices \
      -H "Content-Type: application/json" \
@@ -431,7 +419,7 @@ go build -buildmode=plugin -o myresources.so ./myresources/main.go
 
 3. Copy to plugins directory:
 ```bash
-cp myresources.so plugins/
+cp myresources.so bin/plugins/
 ```
 
 The server will automatically load it.
@@ -507,6 +495,7 @@ api-server/
 │   │   ├── scheme.go               # Type factory
 │   │   ├── router.go               # Generic routing
 │   │   ├── middleware.go           # Middleware
+|   |   ├── plugins.go              # Plugin provider interface
 │   │   ├── server.go               # HTTP server
 │   │   ├── crd.go                  # CRD definitions & registry
 │   │   └── dynamic.go              # DynamicObject type
@@ -533,23 +522,6 @@ api-server/
 └── demo.sh                         # Automated demo script
 ```
 
-## Files Overview
-
-- `pkg/api/router.go` - The most important file. Shows how generic routing works.
-- `pkg/api/registry.go` - Thread-safe resource storage with RWMutex.
-- `pkg/api/scheme.go` - Type factory pattern preventing direct type imports.
-- `pkg/plugins/loader.go` - Plugin watching and loading system.
-- `plugins/invoices/main.go` - Complete plugin example.
-- `cmd/server/main.go` - Demonstrates registration flow.
-
-## Advanced Topics
-
-### Plugin Hot-Reload
-
-The system supports hot-reloading:
-- Remove .so file from plugins/
-- Server detects removal but continues operating
-- (Unregister not yet implemented; plugins are loaded once)
 
 ### Thread Safety
 

@@ -124,6 +124,7 @@ Complete index of all files in the extended dynamic API server project.
 
 - **`pkg/plugins/interface.go`** - Plugin interface
 - **`pkg/plugins/loader.go`** - Plugin loading and watching
+- **`pkg/api/plugins.go`** - Plugin provider interface
 - **`plugins/invoices/main.go`** - Example invoice plugin
 - **`plugins/build.sh`** - Script to build all plugins
 
