@@ -5816,8 +5816,8 @@ the resource for discovery purposes, including its API group, version, kind, and
 schema.
 
 When a client queries the discovery endpoints, it can use these definitions to
-understand both built-in and runtime-created resources. Tools such as *apictl
-explain* can present resource information without requiring special knowledge of
+understand both built-in and runtime-created resources. Tools such as `apictl explain` 
+can present resource information without requiring special knowledge of
 which resources were compiled into the server and which were added later.
 
 The built-in resource definitions registered in the previous chapter now become
