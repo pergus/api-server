@@ -6748,7 +6748,7 @@ failures are shown separately so administrators can quickly identify build or
 compatibility problems. This provides a simple operational view of the plugin
 subsystem without requiring direct access to the server logs.
 
-**Listing 12.9 - `cmd/apiclt/commands.go` ()**
+**Listing 12.9 - `cmd/apiclt/commands.go` (cmdPlugins)**
 ```go
 // cmdPlugins lists all loaded and failed plugins
 func cmdPlugins(c *Client) {
