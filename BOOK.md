@@ -8228,23 +8228,43 @@ sequenceDiagram
 Add a test that subscribes, creates an object through storage, and asserts an
 `ADDED` event arrives:
 
+**Listing 13.9 — `pkg/api/storage_publish_test.go`**
 ```go
+package api
+
+import (
+	"testing"
+	"time"
+)
+
 func TestStoragePublishes(t *testing.T) {
 	bus := NewEventBus()
+	defer bus.Close()
+
 	sub := bus.Subscribe("widgets")
+
 	ms := NewMemoryStorage().(*MemoryStorage)
 	ms.SetEventBus(bus, "widgets")
 
-	_ = ms.Create(map[string]any{"id": "w1"})
+	if err := ms.Create(map[string]any{"id": "w1"}); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
 	select {
 	case ev := <-sub.Events:
 		if ev.Type != Added {
 			t.Fatalf("want ADDED, got %s", ev.Type)
 		}
+
+		if ev.Resource != "widgets" {
+			t.Fatalf("want resource widgets, got %s", ev.Resource)
+		}
+
 	case <-time.After(time.Second):
-		t.Fatal("no event")
+		t.Fatal("no event received")
 	}
 }
+
 ```
 
 ```bash
