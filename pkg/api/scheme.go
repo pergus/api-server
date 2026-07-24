@@ -58,15 +58,15 @@ type Scheme interface {
 	Has(name string) bool
 }
 
-// SimpleScheme implements the Scheme interface.
-type SimpleScheme struct {
+// ResourceScheme implements the Scheme interface.
+type ResourceScheme struct {
 	mu        sync.RWMutex
 	factories map[string]ObjectFactory
 }
 
 // NewScheme creates a new Scheme.
 func NewScheme() Scheme {
-	return &SimpleScheme{
+	return &ResourceScheme{
 		factories: make(map[string]ObjectFactory),
 	}
 }
@@ -74,7 +74,7 @@ func NewScheme() Scheme {
 // Register adds a factory for a type.
 // Thread-safe for concurrent registration.
 // Called during initialization or when plugins load.
-func (s *SimpleScheme) Register(name string, factory ObjectFactory) error {
+func (s *ResourceScheme) Register(name string, factory ObjectFactory) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -89,7 +89,7 @@ func (s *SimpleScheme) Register(name string, factory ObjectFactory) error {
 // Unregister removes a factory for a type.
 // Thread-safe for concurrent unregistration.
 // Called when CRDs or plugins are unloaded.
-func (s *SimpleScheme) Unregister(name string) error {
+func (s *ResourceScheme) Unregister(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -104,7 +104,7 @@ func (s *SimpleScheme) Unregister(name string) error {
 // New creates a new instance of a registered type.
 // Thread-safe for concurrent lookups.
 // Called on every HTTP request, so read-lock performance matters.
-func (s *SimpleScheme) New(name string) (any, error) {
+func (s *ResourceScheme) New(name string) (any, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -118,7 +118,7 @@ func (s *SimpleScheme) New(name string) (any, error) {
 
 // Has checks if a type is registered.
 // Thread-safe for concurrent lookups.
-func (s *SimpleScheme) Has(name string) bool {
+func (s *ResourceScheme) Has(name string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	_, exists := s.factories[name]
