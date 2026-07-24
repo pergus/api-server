@@ -8096,33 +8096,9 @@ controller, another service, or something added in the future.
 
 The router is also updated to hold a reference to the event bus:
 
-**Listing 13.7 — `pkg/api/router.go`**
+**Listing 13.7 — `pkg/api/router.go` (Router)**
 
 ```go
-// Router is the HTTP request dispatcher.
-//
-// THIS IS THE KEY TO DYNAMIC EXTENSIBILITY.
-//
-// Unlike typical REST servers that create routes for each resource at startup:
-//
-//	GET /users, POST /users, GET /users/{id}, etc.
-//
-// This router creates only GENERIC routes that determine the resource at runtime:
-//
-//	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
-//
-// Every request:
-// 1. Extracts the resource name from the URL
-// 2. Looks it up in the registry (which may have been updated while running)
-// 3. Dispatches to ONE generic handler
-//
-// The handlers never know about specific resources. They work through:
-// - The Resource interface
-// - The Storage interface
-// - The Scheme (for object creation)
-//
-// This means new resources are immediately available after registration—
-// no router rebuild, no server restart, no HTTP listener restart.
 type Router struct {
 	registry    Registry
 	scheme      Scheme
@@ -8135,7 +8111,7 @@ type Router struct {
 
 The constructor now accepts the event bus:
 
-**Listing 13.8 — `pkg/api/router.go`**
+**Listing 13.8 — `pkg/api/router.go` (NewRouter)**
 
 ```go
 // NewRouter creates a new router.
