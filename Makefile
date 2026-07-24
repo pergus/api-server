@@ -26,7 +26,7 @@ help:
 	@echo "  make fmt            Format code"
 	@echo "  make lint           Run go vet"
 	@echo "  make staticcheck    Run staticcheck linter"
-	@echo "  make deadcode       Check for dead code"
+	@echo "  make deadcode       Check for dead code (some deadcode is expected)"
 	@echo "  make help           Show this help message"
 	@echo ""
 	@echo "Quick start:"
