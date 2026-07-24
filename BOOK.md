@@ -7280,8 +7280,15 @@ systems because subscriptions may exist for minutes, hours, or even the lifetime
 of a controller.
 
 **Listing 13.1 — `pkg/api/event.go`**
-
 ```go
+// pkg/api/event.go
+//
+// This file defines the structures and interfaces for managing events in the
+// dynamic API server. Events represent changes to resources (e.g., creation,
+// modification, deletion) and are used to notify subscribers (watchers) of
+// these changes. The EventBus interface provides a mechanism for publishing
+// events and managing subscriptions.
+
 package api
 
 import "time"
@@ -7358,6 +7365,7 @@ func (s *Subscription) Close() error {
 	}
 	return nil
 }
+
 ```
 
 
@@ -7677,6 +7685,7 @@ func (b *InProcessEventBus) Close() error {
 
 	return nil
 }
+
 
 ```
 
