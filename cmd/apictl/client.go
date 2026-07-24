@@ -170,6 +170,7 @@ func (c *Client) CreateResource(resource string, obj map[string]interface{}) (st
 }
 
 // UpdateResource updates an existing resource.
+// Not used in the current code but provided for completeness.
 func (c *Client) UpdateResource(resource, id string, obj map[string]interface{}) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
@@ -380,18 +381,23 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 // Helper methods
 //
 
+// get performs a GET request to the given path.
 func (c *Client) get(path string) ([]byte, error) {
 	return c.request("GET", path, nil)
 }
 
+// post performs a POST request to the given path with the provided body.
 func (c *Client) post(path string, body []byte) ([]byte, error) {
 	return c.request("POST", path, body)
 }
 
+// put performs a PUT request to the given path with the provided body.
+// Not used in the current code but provided for completeness.
 func (c *Client) put(path string, body []byte) ([]byte, error) {
 	return c.request("PUT", path, body)
 }
 
+// delete performs a DELETE request to the given path.
 func (c *Client) delete(path string) ([]byte, error) {
 	return c.request("DELETE", path, nil)
 }
