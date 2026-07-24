@@ -9944,6 +9944,15 @@ occur.
 
 The following test demonstrates the complete controller flow in practice:
 
+
+Build the server and client.
+
+```bash
+go build -v -o bin/api-server ./cmd/api-server
+go build -v -o bin/apictl ./cmd/apictl
+```
+
+
 ```bash
 # terminal 1
 ./api-server
