@@ -9005,7 +9005,7 @@ In the first terminal, start a watch stream for a resource type:
 
 ```bash
 # terminal 1
-./apictl watch orders
+./apictl watch invoices
 ```
 
 The command does not make repeated requests to the server. Instead, it opens a
@@ -9017,7 +9017,7 @@ In a second terminal, create a new object:
 
 ```bash
 # terminal 2
-./apictl create -f examples/order-1.json
+./apictl create -f examples/invoice-1.json
 ```
 
 The create request follows the normal API path: the router receives the request,
