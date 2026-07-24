@@ -9952,6 +9952,7 @@ go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apictl ./cmd/apictl
 ```
 
+Run the server and client.
 
 ```bash
 # terminal 1
