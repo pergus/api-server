@@ -9835,6 +9835,8 @@ flowchart TD
 
 The API server can now do more than store and retrieve objects. It can observe
 changes, execute automated reactions, and continuously maintain resource state. 
+Add the code in Listing 15.3 between the plugin loader code and the start
+serve go routine.
 
 **Listing 15.3 — `cmd/api-server/main.go` (controller additions)**
 
