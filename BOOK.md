@@ -9388,6 +9388,16 @@ state.
 **Listing 15.2 — `pkg/controllers/orders.go`**
 
 ```go
+// pkg/controllers/orders.go
+//
+// This file implements the OrderController, which watches order events and
+// performs reconciliation. The controller demonstrates the reconciliation
+// pattern: it reacts to events (Added, Modified, Deleted) and updates the order
+// state accordingly. It is a simple example of how business logic can be
+// decoupled from HTTP request handling, allowing controllers to operate
+// independently of the API server's request lifecycle.
+
+
 package controllers
 
 import (
@@ -9397,6 +9407,7 @@ import (
 
 	"github.com/pergus/api-server/pkg/api"
 )
+
 // OrderController watches order events and performs reconciliation.
 //
 // Business Logic:
@@ -9532,6 +9543,7 @@ func (oc *OrderController) reconcileDeleted(event api.Event) error {
 func (oc *OrderController) Run(ctx context.Context) error {
 	return oc.baseController.runLoop(ctx, oc.Reconcile)
 }
+
 ```
 
 
