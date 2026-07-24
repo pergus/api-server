@@ -9004,8 +9004,20 @@ and the operation that generates events in separate terminals.
 In the first terminal, start a watch stream for a resource type:
 
 ```bash
-# terminal 1
-./apictl watch invoices
+# Build the server and client
+go build -v -o bin/api-server ./cmd/api-server
+go build -v -o bin/apiclt ./cmd/apiclt
+``
+
+```bash
+# terminal 1 - start the server
+./bin/api-server
+```
+
+
+```bash
+# terminal 2 - start the client to watch for invoices events
+./bin/apictl watch invoices
 ```
 
 The command does not make repeated requests to the server. Instead, it opens a
@@ -9016,8 +9028,8 @@ terminal remains attached to the resource stream until the user stops it with
 In a second terminal, create a new object:
 
 ```bash
-# terminal 2
-./apictl create -f examples/invoice-1.json
+# terminal 3 - create an invoice
+./bin/apictl create -f examples/invoice-1.json
 ```
 
 The create request follows the normal API path: the router receives the request,
