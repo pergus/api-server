@@ -33,8 +33,8 @@ help:
 	@echo "  make build          # Build both binaries"
 	@echo "  make run            # Start api-server (in Terminal 1)"
 	@echo "  # In Terminal 2:"
-	@echo "  ./apictl api-resources"
-	@echo "  ./apictl apply -f examples/invoice-crd.yaml"
+	@echo "  ./bin/apictl api-resources"
+	@echo "  ./bin/apictl apply -f examples/invoice-crd.yaml"
 	@echo ""
 
 # Build targets
