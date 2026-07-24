@@ -9086,7 +9086,7 @@ flowchart TD
     A["Client creates Order"] --> B["API handler stores object"]
     B --> C["EventBus publishes ADDED event"]
     C --> D["OrderController receives event"]
-    D --> E["Controller calculates totals and updates status"]
+    D --> E["Controller initializes order state"]
     E --> F["Storage.Update()"]
     F --> G["EventBus publishes MODIFIED event"]
     G --> H["Watch clients see updated order"]
@@ -9157,7 +9157,7 @@ situations do not corrupt application state.
 For example, an order controller might receive an `ADDED` event:
 
 1. Read the current order state.
-2. Calculate any missing values.
+2. Validate and initialize missing fields.
 3. Update the order status from `draft` to `processing`.
 4. Save the updated object through storage.
 5. Allow the normal event pipeline to notify other consumers.
@@ -9263,7 +9263,7 @@ The workflow is intentionally simple:
 2. Storage saves the new object.
 3. Storage publishes an `ADDED` event.
 4. The order controller receives the event.
-5. The controller calculates missing values and updates the order.
+5. The controller initializes missing values and updates the order state.
 6. Storage publishes a `MODIFIED` event.
 7. Watch clients and other controllers receive the updated state.
 
@@ -9274,7 +9274,7 @@ For an order, the desired state is that every newly created order should be
 ready for processing. When the controller sees an `ADDED` event, it performs
 three operations:
 
-* It ensures the order has a status.
+* It sets the order status to `processing`.
 * It ensures a total value exists.
 * It persists the updated order.
 
@@ -9317,8 +9317,8 @@ small, while each state transition has its own focused handler.
 
 The `reconcileAdded` method performs the main business operation. It first
 converts the incoming object into a generic map so fields can be inspected and
-changed. It then updates the order's status to `processing` and supplies a
-default total if one was not provided.
+changed. It then updates the order's status to `processing` and ensures that
+the total field exists.
 
 In a production system, this step might contain much more complex behavior:
 
@@ -9411,7 +9411,7 @@ import (
 // OrderController watches order events and performs reconciliation.
 //
 // Business Logic:
-// - When an order is ADDED: Calculate totals, set status to "processing"
+// - When an order is ADDED: Initialize order state and set status to "processing"
 // - When an order is MODIFIED: Log the change
 // - When an order is DELETED: Log the deletion
 //
@@ -9469,7 +9469,7 @@ func (oc *OrderController) Reconcile(event api.Event) error {
 }
 
 // reconcileAdded handles newly created orders.
-// Sets status to "processing" and calculates totals.
+// Initializes order state and sets status to "processing"..
 func (oc *OrderController) reconcileAdded(event api.Event) error {
 	log.Printf("[%s] NEW ORDER - calculating totals and setting status", oc.Name())
 
@@ -9490,8 +9490,8 @@ func (oc *OrderController) reconcileAdded(event api.Event) error {
 	// Set status to processing
 	order["status"] = "processing"
 
-	// Calculate total if not already set
-	// (In a real system, this might sum item prices)
+	// Ensure total exists.
+	// A real implementation could calculate this from order items.
 	if _, hasTotal := order["total"]; !hasTotal {
 		order["total"] = 0
 	}
