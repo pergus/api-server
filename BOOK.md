@@ -9956,13 +9956,13 @@ Run the server and client.
 
 ```bash
 # terminal 1
-./api-server
+./bin/api-server
 
 # terminal 2
-./apictl watch orders
+./bin/apictl watch orders
 
 # terminal 3
-./apictl create -f examples/order-1.json
+./bin/apictl create -f examples/order-1.json
 ```
 
 When the order is created, the watch client receives the first event immediately:
