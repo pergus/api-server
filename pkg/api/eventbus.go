@@ -3,7 +3,7 @@
 // This file defines the EventBus interface and its implementation for managing
 // events in the dynamic API server. The EventBus provides a publish/subscribe
 // mechanism for resource events, allowing decoupled communication between
-// storage, watchers, and controllers. The SimpleEventBus implementation uses
+// storage, watchers, and controllers. The InProcessEventBus implementation uses
 // goroutines and channels to ensure non-blocking event distribution and safe
 // concurrent access.
 
@@ -40,7 +40,7 @@ type EventBus interface {
 	Close() error
 }
 
-// SimpleEventBus implements EventBus with goroutines and channels.
+// InProcessEventBus implements EventBus with goroutines and channels.
 //
 // Architecture:
 // - One goroutine per subscription (drains events from its channel)
@@ -51,7 +51,7 @@ type EventBus interface {
 // - Slow subscribers don't block publishers or other subscribers
 // - Publishers never block
 // - Clean shutdown with proper resource cleanup
-type SimpleEventBus struct {
+type InProcessEventBus struct {
 	mu           sync.RWMutex
 	subscribers  map[string][]*Subscription
 	publishQueue chan Event
@@ -61,7 +61,7 @@ type SimpleEventBus struct {
 
 // NewEventBus creates a new event bus.
 func NewEventBus() EventBus {
-	bus := &SimpleEventBus{
+	bus := &InProcessEventBus{
 		subscribers:  make(map[string][]*Subscription),
 		publishQueue: make(chan Event, 1000),
 		done:         make(chan struct{}),
@@ -76,7 +76,7 @@ func NewEventBus() EventBus {
 // Publish enqueues an event for publishing.
 // Non-blocking - returns immediately.
 // If bus is closed, event is discarded silently.
-func (b *SimpleEventBus) Publish(event Event) {
+func (b *InProcessEventBus) Publish(event Event) {
 	b.mu.RLock()
 	if b.closed {
 		b.mu.RUnlock()
@@ -92,7 +92,7 @@ func (b *SimpleEventBus) Publish(event Event) {
 }
 
 // Subscribe creates a new subscription for events on a resource.
-func (b *SimpleEventBus) Subscribe(resource string) *Subscription {
+func (b *InProcessEventBus) Subscribe(resource string) *Subscription {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -114,7 +114,7 @@ func (b *SimpleEventBus) Subscribe(resource string) *Subscription {
 }
 
 // Unsubscribe removes a subscription.
-func (b *SimpleEventBus) Unsubscribe(sub *Subscription) {
+func (b *InProcessEventBus) Unsubscribe(sub *Subscription) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -140,7 +140,7 @@ func (b *SimpleEventBus) Unsubscribe(sub *Subscription) {
 
 // publishLoop runs in a goroutine and handles event distribution.
 // It ensures publishers never block by running distribution in separate goroutines.
-func (b *SimpleEventBus) publishLoop() {
+func (b *InProcessEventBus) publishLoop() {
 	for {
 		select {
 		case event := <-b.publishQueue:
@@ -157,7 +157,7 @@ func (b *SimpleEventBus) publishLoop() {
 
 // fanOut distributes an event to all subscribers of a resource.
 // Runs in a separate goroutine per event.
-func (b *SimpleEventBus) fanOut(event Event) {
+func (b *InProcessEventBus) fanOut(event Event) {
 	b.mu.RLock()
 	subscribers := b.subscribers[event.Resource]
 
@@ -185,7 +185,7 @@ func (b *SimpleEventBus) fanOut(event Event) {
 // Close shuts down the event bus.
 // It will no longer publish events and closes all subscriptions.
 // Safe to call multiple times.
-func (b *SimpleEventBus) Close() error {
+func (b *InProcessEventBus) Close() error {
 	b.mu.Lock()
 	if b.closed {
 		b.mu.Unlock()

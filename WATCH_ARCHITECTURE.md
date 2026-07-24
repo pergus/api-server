@@ -59,7 +59,7 @@ Storage → EventBus → (Fan-out) → Watch Clients
 ### Implementation
 
 ```go
-// SimpleEventBus runs:
+// InProcessEventBus runs:
 // 1. publishLoop() - reads from publish queue
 // 2. fanOut() per event - distributes to all subscribers
 // 3. Each subscriber drains its channel in a separate goroutine

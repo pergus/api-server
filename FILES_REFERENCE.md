@@ -71,7 +71,7 @@ Complete index of all files in the extended dynamic API server project.
 
 - **`pkg/api/eventbus.go`** - Event pub/sub system
   - EventBus interface
-  - SimpleEventBus implementation
+  - InProcessEventBus implementation
   - Thread-safe publish/subscribe with goroutine fan-out
   - Subscription with buffered event channels (100 buffer)
 

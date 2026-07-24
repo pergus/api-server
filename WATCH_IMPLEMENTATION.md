@@ -16,7 +16,7 @@ The Watch API and Controller Framework extends the dynamic API server with event
 
 - **pkg/api/eventbus.go**
   - `EventBus` interface for pub/sub
-  - `SimpleEventBus` implementation with:
+  - `InProcessEventBus` implementation with:
     - Thread-safe Subscribe/Unsubscribe
     - Non-blocking Publish
     - Fan-out to all subscribers in separate goroutines
