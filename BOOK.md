@@ -9073,11 +9073,10 @@ Controllers provide this missing piece. A controller is a long-running process
 inside the API server that watches events, evaluates the current state of
 resources, and performs actions to move the system toward the desired state.
 
-This is the same pattern used by systems such as Kubernetes. Instead of placing
-all business logic directly inside HTTP handlers, controllers operate
-independently and react to state changes. The API layer remains responsible for
-accepting requests and storing data, while controllers handle the workflows that
-happen after those changes occur.
+Instead of placing all business logic directly inside HTTP handlers, controllers
+operate independently and react to state changes. The API layer remains
+responsible for accepting requests and storing data, while controllers handle
+the workflows that happen after those changes occur.
 
 For example, an order workflow might look like this:
 
