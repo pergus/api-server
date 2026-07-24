@@ -759,28 +759,28 @@ type Registry interface {
 	Count() int
 }
 
-// SimpleRegistry implements the Registry interface.
+// ResourceRegistry implements the Registry interface.
 //
 // It uses a sync.RWMutex to protect concurrent access.
 // This allows:
 // - Multiple readers (HTTP requests looking up resources)
 // - Single writer (registering/unregistering resources)
 // - Safe concurrent access without blocking readers unnecessarily
-type SimpleRegistry struct {
+type ResourceRegistry struct {
 	mu        sync.RWMutex
 	resources map[string]Resource
 }
 
 // NewRegistry creates a new resource registry.
 func NewRegistry() Registry {
-	return &SimpleRegistry{
+	return &ResourceRegistry{
 		resources: make(map[string]Resource),
 	}
 }
 
 // Register adds a resource to the registry.
 // Thread-safe; blocks write but allows concurrent reads.
-func (r *SimpleRegistry) Register(resource Resource) error {
+func (r *ResourceRegistry) Register(resource Resource) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -795,7 +795,7 @@ func (r *SimpleRegistry) Register(resource Resource) error {
 
 // Unregister removes a resource from the registry.
 // Thread-safe; blocks write but allows concurrent reads.
-func (r *SimpleRegistry) Unregister(name string) error {
+func (r *ResourceRegistry) Unregister(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -810,7 +810,7 @@ func (r *SimpleRegistry) Unregister(name string) error {
 // Lookup retrieves a resource by name.
 // Thread-safe; allows concurrent reads.
 // This is called on EVERY HTTP request, so read-lock performance matters.
-func (r *SimpleRegistry) Lookup(name string) (Resource, bool) {
+func (r *ResourceRegistry) Lookup(name string) (Resource, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -821,7 +821,7 @@ func (r *SimpleRegistry) Lookup(name string) (Resource, bool) {
 // List returns all registered resources in sorted order.
 // Thread-safe; allows concurrent reads.
 // Used by the discovery endpoint.
-func (r *SimpleRegistry) List() []Resource {
+func (r *ResourceRegistry) List() []Resource {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -839,7 +839,7 @@ func (r *SimpleRegistry) List() []Resource {
 }
 
 // Names returns just the resource names in sorted order.
-func (r *SimpleRegistry) Names() []string {
+func (r *ResourceRegistry) Names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -853,7 +853,7 @@ func (r *SimpleRegistry) Names() []string {
 }
 
 // Count returns the number of registered resources.
-func (r *SimpleRegistry) Count() int {
+func (r *ResourceRegistry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.resources)

@@ -58,7 +58,7 @@ type Registry interface {
 **Key Implementation Detail:**
 
 ```go
-type SimpleRegistry struct {
+type ResourceRegistry struct {
     mu        sync.RWMutex
     resources map[string]Resource
 }
@@ -310,7 +310,7 @@ At NO point does the handler know:
 ### Registry.Lookup() (Hot Path)
 
 ```go
-func (r *SimpleRegistry) Lookup(name string) (Resource, bool) {
+func (r *ResourceRegistry) Lookup(name string) (Resource, bool) {
     r.mu.RLock()          // Read lock (cheap!)
     defer r.mu.RUnlock()
     resource, exists := r.resources[name]
@@ -325,7 +325,7 @@ func (r *SimpleRegistry) Lookup(name string) (Resource, bool) {
 ### Registry.Register() (Cold Path)
 
 ```go
-func (r *SimpleRegistry) Register(resource Resource) error {
+func (r *ResourceRegistry) Register(resource Resource) error {
     r.mu.Lock()            // Exclusive lock
     defer r.mu.Unlock()
     r.resources[name] = resource
