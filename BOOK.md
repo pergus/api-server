@@ -10233,6 +10233,7 @@ Every file you wrote, and the chapter that introduced it.
 | `pkg/api/dynamic.go` | 10 | Dynamic objects and dynamic resource |
 | `pkg/api/event.go` | 13 | Event model and subscription |
 | `pkg/api/eventbus.go` | 13 | Non-blocking pub/sub bus |
+| `pkg/api/plugins.go`  | 12 | Plugin provider interface |
 | `pkg/resources/users.go` | 7 | Built-in users resource |
 | `pkg/resources/products.go` | 7 | Built-in products resource |
 | `pkg/resources/orders.go` | 7 | Built-in orders resource |
