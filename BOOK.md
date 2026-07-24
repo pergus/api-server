@@ -6745,7 +6745,7 @@ The client mirrors the server's public data structures rather than importing
 them directly. This keeps the client independent of the server implementation
 while ensuring that the JSON response can be decoded into strongly typed values.
 
-**Listing 12.8 - `cmd/apiclt/client.go` (PluginList)**
+**Listing 12.8 - `cmd/apictl/client.go` (PluginList)**
 ```go
 // PluginInfo contains public plugin information.
 type PluginInfo struct {
@@ -6775,7 +6775,7 @@ retrieves the plugin information from the server. This method follows the same
 pattern as the other client operations by issuing an HTTP request, decoding the
 JSON response, and returning the populated structure to the caller.
 
-**Listing 12.9 - `cmd/apiclt/client.go` (ListPlugins)**
+**Listing 12.9 - `cmd/apictl/client.go` (ListPlugins)**
 ```go
 // -----------------------------------------------------------------------------
 // Plugins
@@ -6808,7 +6808,7 @@ failures are shown separately so administrators can quickly identify build or
 compatibility problems. This provides a simple operational view of the plugin
 subsystem without requiring direct access to the server logs.
 
-**Listing 12.10 - `cmd/apiclt/commands.go` (cmdPlugins)**
+**Listing 12.10 - `cmd/apictl/commands.go` (cmdPlugins)**
 ```go
 // cmdPlugins lists all loaded and failed plugins
 func cmdPlugins(c *Client) {
@@ -7105,7 +7105,7 @@ echo "All plugins built successfully!"
 # Build the server and client binaries.
 mkdir bin
 go build -v -o bin/api-server ./cmd/api-server
-go build -v -o bin/apiclt ./cmd/apiclt
+go build -v -o bin/apictl ./cmd/apictl
 
 # Build the example plugins.
 chmod +x build_plugins.sh
@@ -7122,16 +7122,16 @@ cd bin
 # Successfully loaded plugin: invoices
 
 # Verify that the plugin is loaded.
-./apiclt plugins
+./apictl plugins
 
 # Verify that the new resource provided by the plugin is available.
-./apiclt api-resources
+./apictl api-resources
 
 # Create an invoice using the dynamically registered resource.
-./apiclt create -f examples/invoice-1.json
+./apictl create -f examples/invoice-1.json
 
 # Retrieve the created invoice.
-./apiclt get invoices
+./apictl get invoices
 ```
 
 Two independent runtime-extension mechanisms now coexist: declarative CRDs and
@@ -9006,7 +9006,7 @@ In the first terminal, start a watch stream for a resource type:
 ```bash
 # Build the server and client
 go build -v -o bin/api-server ./cmd/api-server
-go build -v -o bin/apiclt ./cmd/apictl
+go build -v -o bin/apictl ./cmd/apictl
 ```
 
 ```bash
