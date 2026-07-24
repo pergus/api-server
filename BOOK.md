@@ -9001,7 +9001,21 @@ At this point, the complete event pipeline can be tested from the command line.
 The easiest way to verify that the watch system is working is to run the watcher
 and the operation that generates events in separate terminals.
 
-In the first terminal, start a watch stream for a resource type:
+Before testing the Watch API, create a resource that can generate events.
+
+**Listing 14.6 `examples/orders-1.json`**
+```json
+{
+  "id": "order-001",
+  "kind": "Order",
+  "customer_id": "alice",
+  "total": 99.99,
+  "status": "draft",
+  "created_at": "2026-07-15T10:30:00Z"
+}
+```
+
+Build the server and client.
 
 ```bash
 # Build the server and client
@@ -9009,15 +9023,18 @@ go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apictl ./cmd/apictl
 ```
 
+Start the server.
+
 ```bash
 # terminal 1 - start the server
 ./bin/api-server
 ```
 
+Start the client.
 
 ```bash
-# terminal 2 - start the client to watch for invoices events
-./bin/apictl watch invoices
+# terminal 2 - start the client to watch for orders events
+./bin/apictl watch orders
 ```
 
 The command does not make repeated requests to the server. Instead, it opens a
@@ -9025,11 +9042,11 @@ long-lived SSE connection and waits for the event bus to publish changes. The
 terminal remains attached to the resource stream until the user stops it with
 `Ctrl+C` or the server closes the connection.
 
-In a second terminal, create a new object:
+In a third terminal, create a new object:
 
 ```bash
-# terminal 3 - create an invoice
-./bin/apictl create -f examples/invoice-1.json
+# terminal 3 - create an order
+./bin/apictl create -f examples/order-1.json
 ```
 
 The create request follows the normal API path: the router receives the request,
