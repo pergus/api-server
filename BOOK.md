@@ -3852,13 +3852,6 @@ helpers keep common operations in one place so command functions can focus on
 their main purpose instead of repeating formatting, conversion, and lookup
 logic.
 
-The `extractID` helper retrieves an object's identifier in a flexible way. It
-first checks for a top-level `id` field, which is how the built-in resources
-represent their identifiers. If that field is not present, it checks for a
-`metadata.name` field, allowing the CLI to work with dynamically created
-resources that follow that convention. If neither location contains an
-identifier, it returns `"unknown"`.
-
 The `getFieldNames` helper collects the field names from a resource object and
 returns them as a slice of strings. This provides a small utility for code that
 needs to inspect or display the structure of generic objects without knowing
@@ -4000,22 +3993,9 @@ func cmdExplain(c *Client, args []string) {
 	}
 }
 
+// -----------------------------------------------------------------------------
 // Helper functions
-
-// extractID extracts the ID from a resource object.
-// It first looks for the "id" field, then "metadata.name", and returns
-// "unknown" if neither is found.
-func extractID(obj map[string]interface{}) string {
-	if id, ok := obj["id"]; ok {
-		return fmt.Sprintf("%v", id)
-	}
-	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
-		if name, ok := meta["name"]; ok {
-			return fmt.Sprintf("%v", name)
-		}
-	}
-	return "unknown"
-}
+//
 
 // getFieldNames returns the field names of a resource object as a slice of
 // strings.

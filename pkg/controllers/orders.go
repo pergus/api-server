@@ -7,7 +7,6 @@
 // decoupled from HTTP request handling, allowing controllers to operate
 // independently of the API server's request lifecycle.
 
-
 package controllers
 
 import (
@@ -79,7 +78,7 @@ func (oc *OrderController) Reconcile(event api.Event) error {
 }
 
 // reconcileAdded handles newly created orders.
-// Sets status to "processing" and calculates totals.
+// Initializes order state and sets status to "processing".
 func (oc *OrderController) reconcileAdded(event api.Event) error {
 	log.Printf("[%s] NEW ORDER - calculating totals and setting status", oc.Name())
 
@@ -100,8 +99,8 @@ func (oc *OrderController) reconcileAdded(event api.Event) error {
 	// Set status to processing
 	order["status"] = "processing"
 
-	// Calculate total if not already set
-	// (In a real system, this might sum item prices)
+	// Ensure total exists.
+	// A real implementation could calculate this from order items.
 	if _, hasTotal := order["total"]; !hasTotal {
 		order["total"] = 0
 	}

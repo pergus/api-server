@@ -432,22 +432,9 @@ func cmdExplain(c *Client, args []string) {
 	}
 }
 
+// -----------------------------------------------------------------------------
 // Helper functions
-
-// extractID extracts the ID from a resource object.
-// It first looks for the "id" field, then "metadata.name", and returns
-// "unknown" if neither is found.
-func extractID(obj map[string]interface{}) string {
-	if id, ok := obj["id"]; ok {
-		return fmt.Sprintf("%v", id)
-	}
-	if meta, ok := obj["metadata"].(map[string]interface{}); ok {
-		if name, ok := meta["name"]; ok {
-			return fmt.Sprintf("%v", name)
-		}
-	}
-	return "unknown"
-}
+//
 
 // getFieldNames returns the field names of a resource object as a slice of
 // strings.

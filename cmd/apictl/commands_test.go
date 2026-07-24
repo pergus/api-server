@@ -58,45 +58,6 @@ func TestCmdGetSingle(t *testing.T) {
 	}
 }
 
-// TestExtractIDFromObject tests the extractID helper function.
-func TestExtractIDFromObject(t *testing.T) {
-	obj := map[string]interface{}{
-		"id":   "test-123",
-		"name": "Test Object",
-	}
-
-	id := extractID(obj)
-	if id != "test-123" {
-		t.Errorf("extractID returned %s, expected test-123", id)
-	}
-}
-
-// TestExtractIDFromMetadata tests extractID from metadata.
-func TestExtractIDFromMetadata(t *testing.T) {
-	obj := map[string]interface{}{
-		"metadata": map[string]interface{}{
-			"name": "my-object",
-		},
-	}
-
-	id := extractID(obj)
-	if id != "my-object" {
-		t.Errorf("extractID from metadata returned %s, expected my-object", id)
-	}
-}
-
-// TestExtractIDMissing tests extractID with missing id field.
-func TestExtractIDMissing(t *testing.T) {
-	obj := map[string]interface{}{
-		"name": "Test Object",
-	}
-
-	id := extractID(obj)
-	if id != "unknown" {
-		t.Errorf("extractID with no id field should return 'unknown', got '%s'", id)
-	}
-}
-
 // TestPluralizeHelper tests the pluralize helper function.
 func TestPluralizeHelper(t *testing.T) {
 	tests := []struct {
@@ -116,17 +77,3 @@ func TestPluralizeHelper(t *testing.T) {
 		}
 	}
 }
-
-// TestExtractIDHelper tests the extractID helper function.
-func TestExtractIDHelper(t *testing.T) {
-	obj := map[string]interface{}{
-		"id":   "test-123",
-		"name": "Test Object",
-	}
-
-	id := extractID(obj)
-	if id != "test-123" {
-		t.Errorf("extractID returned %s, expected test-123", id)
-	}
-}
-
