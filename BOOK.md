@@ -8680,10 +8680,20 @@ notifications using the same discovery-driven model used for all other API
 operations.
 
 
-**Listing 14.3 — `cmd/apictl/client.go` (Watch)**
+**Listing 14.3 — `cmd/apictl/client.go` (Imports and Watch)**
 
 ```go
-// add these imports to client.go: "bufio", "strings", "time"
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
 
 // WatchEvent represents a single event from the watch stream.
 type WatchEvent struct {
