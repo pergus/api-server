@@ -9586,11 +9586,11 @@ execution and coordination.
 
 The lifecycle is:
 
-The server creates a controller manager.
-Controllers are registered with the manager.
-The manager starts each controller in its own goroutine.
-Each controller subscribes to the event bus for its resource.
-Controllers process events until the server shuts down.
+1. The server creates a controller manager.
+2. Controllers are registered with the manager.
+3. The manager starts each controller in its own goroutine.
+4. Each controller subscribes to the event bus for its resource.
+5. Controllers process events until the server shuts down.
 
 The relationship looks like this:
 
