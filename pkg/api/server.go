@@ -151,7 +151,7 @@ func (s *Server) RegisterType(name string, factory ObjectFactory) error {
 }
 
 // UnregisterResource unregisters a resource at runtime.
-// This is called when plugins are unloaded.
+// Not used in the current code but provided for completeness.
 func (s *Server) UnregisterResource(name string) error {
 	err := s.registry.Unregister(name)
 	if err == nil {
