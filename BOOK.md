@@ -9003,7 +9003,7 @@ and the operation that generates events in separate terminals.
 
 Before testing the Watch API, create a resource that can generate events.
 
-**Listing 14.6 `examples/orders-1.json`**
+**Listing 14.6 `examples/order-1.json`**
 ```json
 {
   "id": "order-001",
