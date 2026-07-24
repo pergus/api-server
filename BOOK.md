@@ -7981,7 +7981,7 @@ shares the same event stream.
 The updated server structure adds an eventBus field alongside the existing
 framework components:
 
-**Listing 13.3 - `pkg/api/server.go`**
+**Listing 13.3 - `pkg/api/server.go` (Server)**
 
 ```go
 // Server is the HTTP API server.
@@ -8000,7 +8000,7 @@ type Server struct {
 The constructor creates the event bus during server initialization and passes it
 to the router:
 
-**Listing 13.4 - `pkg/api/server.go`**
+**Listing 13.4 - `pkg/api/server.go` (NewServer)**
 
 ```go
 // NewServer creates a new server.
@@ -8035,7 +8035,7 @@ creating a separate event system for each request.
 
 The server also exposes the event bus through an accessor:
 
-**Listing 13.5 - `pkg/api/server.go`**
+**Listing 13.5 - `pkg/api/server.go` (EventBus)**
 
 ```go
 // EventBus returns the event bus.
@@ -8055,7 +8055,7 @@ The final piece is connecting resources to the event system during registration.
 Previously, registering a resource only made it available through the registry.
 Now registration also connects the resource's storage layer to the event bus:
 
-**Listing 13.6 - `pkg/api/server.go`**
+**Listing 13.6 - `pkg/api/server.go` (RegisterResource)**
 
 ```go
 // RegisterResource registers a resource at runtime.
