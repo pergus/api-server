@@ -9007,7 +9007,7 @@ In the first terminal, start a watch stream for a resource type:
 # Build the server and client
 go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apiclt ./cmd/apiclt
-``
+```
 
 ```bash
 # terminal 1 - start the server
