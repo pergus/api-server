@@ -9001,7 +9001,7 @@ At this point, the complete event pipeline can be tested from the command line.
 The easiest way to verify that the watch system is working is to run the watcher
 and the operation that generates events in separate terminals.
 
-Before testing the Watch API, create a resource that can generate events.
+Before testing the Watch API ,create a resource that can generate events.
 
 **Listing 14.6 `examples/order-1.json`**
 ```json
@@ -9018,41 +9018,27 @@ Before testing the Watch API, create a resource that can generate events.
 Build the server and client.
 
 ```bash
-# Build the server and client
 go build -v -o bin/api-server ./cmd/api-server
 go build -v -o bin/apictl ./cmd/apictl
 ```
 
-Start the server.
+Start the server in a terminal.
 
 ```bash
-# terminal 1 - start the server
 ./bin/api-server
 ```
 
-Start the client.
+Start the client to watch for order events in another terminal.
 
 ```bash
-# terminal 2 - start the client to watch for orders events
 ./bin/apictl watch orders
 ```
-
-The command does not make repeated requests to the server. Instead, it opens a
-long-lived SSE connection and waits for the event bus to publish changes. The
-terminal remains attached to the resource stream until the user stops it with
-`Ctrl+C` or the server closes the connection.
 
 In a third terminal, create a new object:
 
 ```bash
-# terminal 3 - create an order
 ./bin/apictl create -f examples/order-1.json
 ```
-
-The create request follows the normal API path: the router receives the request,
-the resource storage persists the object, and the storage layer publishes an
-`ADDED` event through the event bus. The watch handler receives that event from
-its subscription and immediately forwards it to the connected client.
 
 Within milliseconds, the first terminal displays the new event:
 
@@ -9066,53 +9052,6 @@ EVENT: ADDED
   "status": "draft",
   "created_at": "2026-07-15T10:30:00Z"
 }
-```
-
-The important detail is that no component in this flow is polling. The client
-does not repeatedly ask whether anything changed, and the server does not need
-to maintain a list of clients waiting for updates. Instead, the event bus acts
-as the connection point between resource changes and interested consumers.
-
-The same test can be repeated with other operations:
-
-```bash
-./apictl delete orders order-001
-./apictl create -f examples/order-1.json
-```
-
-A delete operation produces a `DELETED` event, while another create produces a
-new `ADDED` event. If the resource supports updates, modifications would appear
-as `MODIFIED` events.
-
-The example object below represents a typical resource instance. It
-intentionally contains only application data and the metadata needed by the API
-framework. The watch system does not require a compiled `Order` type or any
-special knowledge of the fields. It simply transports the object associated with
-the event.
-
-**Listing 14.4 — `examples/order-1.json`**
-
-```json
-{
-  "id": "order-001",
-  "kind": "Order",
-  "customer_id": "alice",
-  "total": 99.99,
-  "status": "draft",
-  "created_at": "2026-07-15T10:30:00Z"
-}
-```
-
-This checkpoint demonstrates the complete path from a user action to a live
-notification:
-
-```mermaid
-flowchart TD
-    A["apictl create"] --> B["HTTP API handler"]
-    B --> C["Resource storage"]
-    C --> D["EventBus.Publish(ADDED)"]
-    D --> E["Watch subscription"]
-    E --> F["apictl watch"]
 ```
 
 With this in place, the API server has moved beyond request/response behavior
