@@ -2247,8 +2247,8 @@ type Config struct {
 func NewServer(cfg Config) *Server {
 	registry := NewRegistry()
 	scheme := NewScheme()
-	//crdRegistry := NewCRDRegistry() (Added in Chapter 13)
-	//eventBus := NewEventBus()       (Added in Chapter 10)
+	//crdRegistry := NewCRDRegistry() (Added in Chapter 10)
+	//eventBus := NewEventBus()       (Added in Chapter 13)
 	router := NewRouter(registry, scheme /*, crdRegistry, eventBus */)
 
 	return &Server{
