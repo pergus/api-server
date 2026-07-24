@@ -8680,7 +8680,20 @@ notifications using the same discovery-driven model used for all other API
 operations.
 
 
-**Listing 14.3 — `cmd/apictl/client.go` (Imports and Watch)**
+The client implementation is intentionally kept separate from the command layer.
+The CLI should not need to understand HTTP streaming, SSE framing, or connection
+management. Instead, the client package provides a small abstraction that turns
+the continuous HTTP response into structured `WatchEvent` values.
+
+Before implementing the watch logic, the client needs the standard library
+packages required for streaming and parsing the response. The additional
+imports support three important parts of the implementation:
+
+* `bufio` provides buffered reading from the long-lived HTTP response.
+* `encoding/json` converts incoming event payloads into structured data.
+* `time` is used when managing delivery timeouts for slow consumers.
+
+**Listing 14.3 — `cmd/apictl/client.go` (Imports)**
 
 ```go
 import (
@@ -8694,7 +8707,36 @@ import (
 	"time"
 )
 
+```
 
+The next step is to add the public client API for consuming the stream. The
+`WatchEvent` type represents the message received from the server, while
+WatchResult separates successful events from asynchronous stream errors.
+
+This separation is important because establishing a watch connection and
+receiving events happen at different points in time. A connection may be
+created successfully and then fail later because of a network interruption,
+server restart, malformed data, or a client that cannot process events quickly
+enough.
+
+The caller therefore receives channels instead of a blocking iterator. This
+fits naturally with Go's concurrency model and allows watch consumers to combine
+resource events with other application activity using normal channel operations.
+
+The Watch method performs the following steps:
+
+1. Builds a request for the resource watch endpoint.
+2. Requests an SSE response using the Accept header.
+3. Validates the HTTP response.
+4. Starts a background goroutine to consume the stream.
+5. Parses SSE messages into `WatchEvent` values.
+6. Delivers events and errors through channels.
+
+The goroutine owns the HTTP response body and closes the channels when the
+stream ends. This ensures callers do not need to manage cleanup details.
+
+**Listing 14.4 — `cmd/apictl/client.go` (Watch)**
+```go
 // WatchEvent represents a single event from the watch stream.
 type WatchEvent struct {
 	Type string          `json:"type"`
@@ -8817,7 +8859,13 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 
 ```
 
-### Client side: the watch command
+With the client implementation complete, the watch functionality is now available
+to any program using the client package. The CLI does not need special knowledge
+of SSE or the event bus. It simply receives a stream of typed events and decides
+how to present or process them.
+
+
+### Client side: watch command
 
 The final piece of the watch feature is the command-line interface. The server
 can now publish events and the client library can consume the SSE stream, but
@@ -8886,7 +8934,7 @@ and receive updates as they happen. This same mechanism also provides the
 foundation for future controllers and operators, which can consume the same
 event stream and react automatically to changes in cluster state.
 
-**Listing 14.4 — `cmd/apictl/commands.go` (cmdWatch)**
+**Listing 14.5 — `cmd/apictl/commands.go` (cmdWatch)**
 
 ```go
 // cmdWatch streams events for a resource
@@ -8941,6 +8989,11 @@ func cmdWatch(c *Client, args []string) {
 }
 
 ```
+
+The `watch` command completes the event flow from storage changes to user-visible
+updates. The CLI does not need to understand how events are generated or
+transported; it simply consumes the generic event stream provided by the client
+library.
 
 ### Checkpoint
 
