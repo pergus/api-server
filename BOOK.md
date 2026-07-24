@@ -8405,7 +8405,85 @@ through HTTP. The event model remains the same regardless of whether the
 consumer is internal or external.
 
 
-**Listing 14.1 — `pkg/api/router.go` (watch)**
+After the event bus has been connected to storage, the final step is to expose
+those events through the HTTP API. The existing generic list endpoint already
+handles every registered resource, so the watch functionality can be added
+without creating separate handlers for each resource type.
+
+The change to the list handler is intentionally small. Normal list requests
+continue to retrieve objects from storage, while requests containing
+watch=true are redirected to the watch implementation. This keeps the REST
+and streaming APIs on the same resource path:
+
+```text
+GET /api/widgets
+```
+
+returns the current collection, while:
+
+```text
+GET /api/widgets?watch=true
+```
+
+keeps the connection open and streams future changes.
+
+Because the decision is made inside the generic handler, every resource
+automatically gains watch support as soon as its storage publishes events.
+
+
+**Listing 14.3 - `pkg/api/router.go` (list)**
+```go
+// list handles GET /api/{resource}
+// Generic handler that works for ALL resources.
+// Supports ?watch=true for streaming events instead of listing.
+func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+	// Check if client is requesting to watch events
+	if req.URL.Query().Get("watch") == "true" {
+		r.watch(w, req, resource)
+		return
+	}
+
+	// Normal list operation
+	objects, err := resource.Storage().List()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := ListResponse{
+		Items: objects,
+		Count: len(objects),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+```
+
+The `list` handler only decides whether the request is a normal query or a
+streaming query. The actual streaming logic is kept separate in `watch`, which
+allows the long-running connection handling code to remain isolated from the
+standard CRUD path.
+
+The watch handler acts as a bridge between two different protocols. Internally,
+the server uses the event bus to distribute Go events between components.
+Externally, clients communicate through HTTP. The handler converts internal
+events into Server-Sent Events, preserving the event-driven design all the way
+to the client.
+
+When a client connects, the handler subscribes to the event bus using the
+resource name. It does not need to know how storage detects changes or which
+components publish events. It only consumes the stream produced by the existing
+event infrastructure.
+
+The implementation also manages the lifecycle of the connection. It verifies
+that the HTTP server supports flushing, registers cleanup for disconnected
+clients, sends periodic keep-alive messages, and removes the subscription when
+the client leaves. These details are important because watch connections may
+remain open for hours.
+
+**Listing 14.2 — `pkg/api/router.go` (watch)**
 
 ```go
 // watch handles GET /api/{resource}?watch=true
@@ -8472,6 +8550,17 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 }
 
 ```
+
+With these two changes, the generic API now supports both snapshot and
+streaming access patterns using the same resource endpoint. Clients that need
+the current state can continue using normal list requests, while clients that
+need continuous updates can subscribe to the event stream.
+
+The important design decision is that the watch API does not add another
+resource mechanism. It reuses the existing registry, resource storage, and
+event bus. A newly registered plugin resource automatically receives watch
+support because the streaming path operates on the same abstractions as every
+other API operation.
 
 ### Client side: consuming SSE
 
@@ -8591,7 +8680,7 @@ notifications using the same discovery-driven model used for all other API
 operations.
 
 
-**Listing 14.2 — `cmd/apictl/client.go` (Watch)**
+**Listing 14.3 — `cmd/apictl/client.go` (Watch)**
 
 ```go
 // add these imports to client.go: "bufio", "strings", "time"
@@ -8787,7 +8876,7 @@ and receive updates as they happen. This same mechanism also provides the
 foundation for future controllers and operators, which can consume the same
 event stream and react automatically to changes in cluster state.
 
-**Listing 14.3 — `cmd/apictl/commands.go` (cmdWatch)**
+**Listing 14.4 — `cmd/apictl/commands.go` (cmdWatch)**
 
 ```go
 // cmdWatch streams events for a resource
