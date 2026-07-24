@@ -386,7 +386,7 @@ Do NOT update for:
    - Illustrates CRD registration flow
 
 2. **pkg/api/crd.go** - CRD system implementation
-   - Simple CRD definition structure
+   - CRD definition structure
    - Thread-safe registry pattern
    - Validation logic
 

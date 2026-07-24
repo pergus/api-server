@@ -322,21 +322,21 @@ All registries protect shared state with `RWMutex`:
 
 ```go
 // CRDRegistry example
-type SimpleCRDRegistry struct {
+type CRDManager struct {
     mu    sync.RWMutex
     crds  map[string]*CRDDefinition
     byKey map[string]string
 }
 
 // Registration (rare)
-func (r *SimpleCRDRegistry) RegisterCRD(crd *CRDDefinition) error {
+func (r *CRDManager) RegisterCRD(crd *CRDDefinition) error {
     r.mu.Lock()              // Exclusive access
     defer r.mu.Unlock()
     // ... register
 }
 
 // Lookup (millions of times)
-func (r *SimpleCRDRegistry) FindByPlural(plural string) (*CRDDefinition, bool) {
+func (r *CRDManager) FindByPlural(plural string) (*CRDDefinition, bool) {
     r.mu.RLock()             // Concurrent reads allowed
     defer r.mu.RUnlock()
     // ... lookup

@@ -10,7 +10,7 @@ This document summarizes the extensions made to the dynamic API server to add fu
 
 **Components:**
 - `CRDDefinition` struct - Represents a Custom Resource Definition
-- `CRDRegistry` interface and `SimpleCRDRegistry` implementation
+- `CRDRegistry` interface and `CRDManager` implementation
 - Thread-safe registration/lookup of CRDs
 
 **Features:**

@@ -504,7 +504,7 @@ To add a new controller:
 
 - In-memory EventBus
 - Buffered channels (100 per subscription)
-- Simple round-robin event distribution
+- Round-robin event distribution
 
 ### For Production
 

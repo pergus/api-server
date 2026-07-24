@@ -331,7 +331,7 @@ Cycle continues...
 
 ## Common Patterns
 
-### Simple Logging Controller
+### Logging Controller
 
 ```go
 type LoggingController struct {
