@@ -130,8 +130,7 @@ Because the registry can change at runtime, **new resources become available the
 instant they are registered** — no router rebuild, no restart.
 
 **Figure 1.1 — Request flow through the dynamic server**
-
-```mermaid
+```mermaid {scale=4}
 flowchart LR
     A[HTTP Request<br/>POST /api/invoices] --> B[Generic Router]
     B --> C{Lookup 'invoices'<br/>in Registry}
@@ -259,6 +258,7 @@ require gopkg.in/yaml.v2 v2.4.0
 
 ### Create the directories
 
+**Listing 2.2 — `Crete directories`**
 ```bash
 mkdir -p cmd/api-server cmd/apictl \
          pkg/api pkg/resources pkg/plugins pkg/controllers \
@@ -267,6 +267,9 @@ mkdir -p cmd/api-server cmd/apictl \
 
 ### Checkpoint
 
+Build the code.
+
+**Listing 2.3 — `Build`**
 ```bash
 go build ./...
 go: warning: "./..." matched no packages
@@ -284,7 +287,6 @@ bottom up: first the contracts (`Resource`, `Storage`), then the runtime
 registries (`Registry`, `Scheme`), then the router and server on top.
 
 **Figure 2.1 — How the core pieces fit together**
-
 ```mermaid
 flowchart TD
     subgraph Request Path
@@ -335,17 +337,18 @@ package api
 // The framework never knows about specific types like User or Product—it only
 // knows about resources through this interface.
 //
-// This design is how the API server allows arbitrary resources (Custom Resource Definitions)
-// to be added at runtime without changing the core API server code.
+// This design is how the API server allows arbitrary resources (Custom Resource
+// Definitions) to be added at runtime without changing the core API server
+// code.
 type Resource interface {
 	// Name returns the singular name of this resource.
 	// Used as the path component: /api/{name}
 	// Examples: "users", "products", "orders", "invoices"
 	Name() string
 
-	// NewObject returns a new, zero-value instance of this resource type.
-	// Called by generic handlers to create empty objects for JSON unmarshalling.
-	// The handler then decodes incoming JSON into this object.
+	// NewObject returns a new, zero-value instance of this resource type. Called
+	// by generic handlers to create empty objects for JSON unmarshalling. The
+	// handler then decodes incoming JSON into this object.
 	//
 	// Example: returns &User{} for users, &Product{} for products
 	NewObject() any
@@ -361,13 +364,12 @@ type Resource interface {
 
 ### The Storage interface
 
-Persistence is abstracted behind a `Storage` interface, allowing the framework to 
-remain completely independent of where data is stored. Whether objects are kept 
-in memory, persisted in Postgres, written to S3, or managed by etcd makes no 
-difference to the rest of the framework. As long as the storage backend 
-implements the interface, it can be used interchangeably. 
-The interface consists of five methods that together cover the complete 
-CRUD lifecycle.
+Persistence is abstracted behind a `Storage` interface, allowing the framework
+to remain completely independent of where data is stored. Whether objects are
+kept in memory, persisted in Postgres, written to S3, or managed by etcd makes
+no difference to the rest of the framework. As long as the storage backend
+implements the interface, it can be used interchangeably. The interface consists
+of five methods that together cover the complete CRUD lifecycle.
 
 
 **Listing 3.2 — `pkg/api/storage.go` (interface + type)**
@@ -629,7 +631,6 @@ goals of the framework: the storage layer works with the serialized
 representation of an object rather than its concrete Go type. 
 
 **Figure 3.1 — Type-agnostic ID extraction**
-
 ```mermaid
 flowchart LR
     O[any object] -->|json.Marshal| J["{ id: alice, ... }"]
@@ -1017,7 +1018,6 @@ object of this type so I can fill it with incoming data?" Together, they give a
 single handler everything it needs to work with any resource in the system.
 
 **Figure 4.1 — Registry and Scheme, side by side**
-
 ```mermaid
 flowchart TB
     subgraph Registry
@@ -4243,7 +4243,6 @@ To achieve this, the server needs three new capabilities:
    the existing API infrastructure.
 
 **Figure 10.1 — CRD registration wires three tables at once**
-
 ```mermaid
 flowchart TD
     P[POST /crds] --> V[Validate CRDDefinition]
@@ -4766,12 +4765,19 @@ required by the generic handlers.
 Creating a dynamic resource does not require any generated code. The server
 simply wraps the definition with the standard resource interface:
 
+**Figure 10.2 — Dynamic resource construction from a CRD definition**
 ```mermaid
 flowchart TD
-    A[CRDDefinition] --> B[DynamicResource]
-    B --> C[Resource Registry]
-    B --> D[Generic API Handlers]
-    B --> E[Storage]
+    A[CRDDefinition]
+    B[DynamicResource]
+    C[Resource Registry]
+    D[Generic API Handlers]
+    E[Storage]
+
+    A --> B
+    B --> C
+    B --> E
+    D --> C
 ```
 
 The `Name` method returns the plural resource name from the CRD definition. This
@@ -5216,7 +5222,7 @@ This follows the same pattern used by existing accessors such as `Registry()`
 and `Scheme()`, keeping shared server capabilities available without exposing
 internal implementation details.
 
-**Listing 10.6 — `pkg/api/server.go` (CRD registry accessor)**
+**Listing 10.7 — `pkg/api/server.go` (CRD registry accessor)**
 ```go
 // CRDRegistry returns the CRD registry.
 // Called to manage Custom Resource Definitions.
@@ -5244,11 +5250,16 @@ descriptive information about the resource.
 
 This creates a useful separation:
 
+**Figure 10.3 - Schema registration for built-in resources**
 ```mermaid
 flowchart TD
-    A[Built-in Go Resource] --> B[RegisterResource]
+    A[Built-in Go Resource]
+
+    A --> B[RegisterResource]
     A --> C[RegisterType]
-    A --> D[CRDDefinition Schema]
+
+    A -. described by .-> D[CRDDefinition Schema]
+
     D --> E[CRD Registry]
     E --> F[Discovery and Metadata]
 ```
@@ -5333,7 +5344,7 @@ resource, then registers the type factory, and finally registers the schema with
 the CRD registry. Keeping these steps together makes it clear that the schema
 describes an existing resource rather than creating a new one.
 
-**Listing 10.7 — `cmd/api-server/main.go` (Registrer built-in resources)**
+**Listing 10.8 — `cmd/api-server/main.go` (Registrer built-in resources)**
 ```go
 // Register Users
 userResource := resources.NewUserResource()
@@ -5940,7 +5951,6 @@ The goal is not to create a separate API mechanism. Plugins participate in the
 same dynamic resource system already used by built-in resources and CRDs.
 
 **Figure 12.1 — Plugin loading**
-
 ```mermaid
 flowchart LR
     F[invoices-v2.so appears<br/>in plugins/] --> W[Loader.Watch poll]
@@ -6498,16 +6508,9 @@ func (l *Loader) ListFailed() []api.FailedPluginInfo {
 ### Plugin provider abstraction
 
 The router should not import the plugin package directly. Doing so would create
-a dependency cycle:
-
-```mermaid
-flowchart TD
-    A[api/router] --> B[plugins/loader]
-    B --> C[api]
-```
-
-Instead, the API package defines a small interface. The loader implements this
-interface, but the router only knows about the abstraction.
+a dependency cycle. Instead, the API package defines a small interface. The
+loader implements this interface, but the router only knows about the
+abstraction.
 
 **Listing 12.3 — `pkg/api/plugins.go`**
 ```go
@@ -7165,7 +7168,9 @@ intermediary that distributes those notifications to any interested consumers.
 
 The flow looks like this:
 
+**Figure 13.1 - Event flow from resource changes to consumers**
 ```mermaid
+%%{init: {"sequence": {"useMaxWidth": false}}}%%
 sequenceDiagram
     participant H as HTTP POST /api/{resource}
     participant S as Storage.Create()
@@ -7210,8 +7215,7 @@ the rest of the framework: the event system should not need to know whether it
 is carrying a `User`, `Product`, `Order`, or a dynamically created CRD object.
 Any resource type can flow through the same event pipeline.
 
-**Figure 13.1 — The event pipeline**
-
+**Figure 13.2 — The event pipeline**
 ```mermaid
 flowchart TD
     H[HTTP write handler] --> ST[Storage.Create/Update/Delete]
@@ -7712,7 +7716,7 @@ The event is only published when an event bus has been configured. This keeps
 storage backwards compatible and allows the same storage implementation to be
 used in configurations where event processing is disabled.
 
-**Listing 13.12— `pkg/api/storage.go` (Connecting Storage and EventBus)**
+**Listing 13.3— `pkg/api/storage.go` (Connecting Storage and EventBus)**
 
 ```go
 // pkg/api/storage.go
@@ -7966,7 +7970,7 @@ shares the same event stream.
 The updated server structure adds an eventBus field alongside the existing
 framework components:
 
-**Listing 13.3 - `pkg/api/server.go` (Server)**
+**Listing 13.4 - `pkg/api/server.go` (Server)**
 
 ```go
 // Server is the HTTP API server.
@@ -7985,7 +7989,7 @@ type Server struct {
 The constructor creates the event bus during server initialization and passes it
 to the router:
 
-**Listing 13.4 - `pkg/api/server.go` (NewServer)**
+**Listing 13.5 - `pkg/api/server.go` (NewServer)**
 
 ```go
 // NewServer creates a new server.
@@ -8020,7 +8024,7 @@ creating a separate event system for each request.
 
 The server also exposes the event bus through an accessor:
 
-**Listing 13.5 - `pkg/api/server.go` (EventBus)**
+**Listing 13.6 - `pkg/api/server.go` (EventBus)**
 
 ```go
 // EventBus returns the event bus.
@@ -8040,7 +8044,7 @@ The final piece is connecting resources to the event system during registration.
 Previously, registering a resource only made it available through the registry.
 Now registration also connects the resource's storage layer to the event bus:
 
-**Listing 13.6 - `pkg/api/server.go` (RegisterResource)**
+**Listing 13.7 - `pkg/api/server.go` (RegisterResource)**
 
 ```go
 // RegisterResource registers a resource at runtime.
@@ -8081,7 +8085,7 @@ controller, another service, or something added in the future.
 
 The router is also updated to hold a reference to the event bus:
 
-**Listing 13.7 — `pkg/api/router.go` (Router)**
+**Listing 13.8 — `pkg/api/router.go` (Router)**
 
 ```go
 type Router struct {
@@ -8096,7 +8100,7 @@ type Router struct {
 
 The constructor now accepts the event bus:
 
-**Listing 13.8 — `pkg/api/router.go` (NewRouter)**
+**Listing 13.9 — `pkg/api/router.go` (NewRouter)**
 
 ```go
 // NewRouter creates a new router.
@@ -8169,6 +8173,7 @@ that temporarily falls behind does not delay API writes.
 
 The overall flow is therefore:
 
+**Figure 13.3 - Non-blocking event publication flow**
 ```mermaid
 flowchart TD
     A[HTTP request] --> B[Storage mutation]
@@ -8192,9 +8197,9 @@ acts as a stable boundary between the core API and the components that react to
 changes.
 
 
-**Figure 13.2 — Why publishers never block**
-
+**Figure 13.4 — Why publishers never block**
 ```mermaid
+%%{init: {"sequence": {"useMaxWidth": false}}}%%
 sequenceDiagram
     participant H as Handler
     participant S as Storage
@@ -8213,7 +8218,7 @@ sequenceDiagram
 Add a test that subscribes, creates an object through storage, and asserts an
 `ADDED` event arrives:
 
-**Listing 13.9 — `pkg/api/storage_publish_test.go`**
+**Listing 13.10 — `pkg/api/storage_publish_test.go`**
 ```go
 package api
 
@@ -8369,12 +8374,13 @@ the watch loop and triggers the deferred unsubscribe operation.
 
 The complete flow is therefore:
 
+**Figure 14.1 - Watch API event streaming flow**
 ```mermaid
 flowchart TD
-    Client["Client"] -->|"GET /api/orders?watch=true"| Handler["Watch handler"]
-    Handler -->|"Subscribe(''orders'')"| Bus["Event bus"]
-    Bus -->|"Event: {ADDED MODIFIED DELETED}"| SSE["SSE stream"]
-    SSE --> Updates["Client receives updates"]
+    Client["Watch client"] -->|"GET /api/orders?watch=true"| Handler["Watch handler"]
+    Handler -->|"Subscribe(resource=orders)"| Bus["Event bus"]
+    Bus -->|"Resource events"| Handler
+    Handler -->|"SSE stream<br/>event + data"| Client
 ```
 
 The important architectural point is that the Watch API does not poll storage. A
@@ -8416,7 +8422,7 @@ Because the decision is made inside the generic handler, every resource
 automatically gains watch support as soon as its storage publishes events.
 
 
-**Listing 14.3 - `pkg/api/router.go` (list)**
+**Listing 14.1 - `pkg/api/router.go` (list)**
 ```go
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
@@ -8635,13 +8641,15 @@ instead of freezing the watch connection.
 
 The overall client-side flow is:
 
+**Figure 14.2 - Client-side SSE processing pipeline**
 ```mermaid
 flowchart TD
     A["HTTP response stream"] --> B["bufio.Reader"]
-    B --> C["SSE line parser"]
+    B --> C["SSE stream processor"]
     C --> D["Events channel"]
     C --> E["Errors channel"]
     D --> F["Application logic"]
+    E --> F
 ```
 
 This keeps the SSE implementation isolated inside the client library. Command
@@ -8652,9 +8660,10 @@ changes.
 
 With this addition, the framework now supports the complete event path:
 
+**Figure 14.3 - End-to-end event delivery path**
 ```mermaid
 flowchart TD
-    A["Resource change"] --> B["Storage"]
+    A["API request<br/>(create/update/delete)"] --> B["Storage"]
     B --> C["EventBus"]
     C --> D["Watch API (SSE)"]
     D --> E["apictl / external clients"]
@@ -8905,9 +8914,10 @@ through the same event path.
 
 This completes the event pipeline introduced in this chapter:
 
+**Figure 14.4 - Complete watch command event flow**
 ```mermaid
 flowchart TD
-    A["Resource change"] --> B["MemoryStorage"]
+    A["Create / Update / Delete request"] --> B["Storage"]
     B --> C["EventBus.Publish()"]
     C --> D["Watch API (SSE stream)"]
     D --> E["apictl watch"]
@@ -9065,16 +9075,17 @@ the workflows that happen after those changes occur.
 
 For example, an order workflow might look like this:
 
-
+**Figure 15.1 - Controller reconciliation event loop**
 ```mermaid
 flowchart TD
-    A["Client creates Order"] --> B["API handler stores object"]
-    B --> C["EventBus publishes ADDED event"]
-    C --> D["OrderController receives event"]
-    D --> E["Controller initializes order state"]
+    A["Client creates Order"] --> B["API handler"]
+    B --> C["Storage.Create()"]
+    C --> D["EventBus publishes ADDED event"]
+    D --> E["OrderController reconciles"]
     E --> F["Storage.Update()"]
     F --> G["EventBus publishes MODIFIED event"]
-    G --> H["Watch clients see updated order"]
+    G --> H["Watch clients receive update"]
+    G --> E
 ```
 
 
@@ -9271,7 +9282,7 @@ creates the corresponding `MODIFIED` event.
 
 The controller therefore participates in the same lifecycle as any other client:
 
-
+**Figure 15.2 - Order controller reconciliation workflow**
 ```mermaid
 flowchart TD
     A["Order created"] --> B["ADDED event"]
@@ -9332,13 +9343,13 @@ This is also an important design consideration. A controller that updates every
 `MODIFIED` event without checking whether an update is actually required can
 create an endless loop:
 
-
+**Figure 15.3 - Non-idempotent controller update loop**
 ```mermaid
 flowchart TD
     A["MODIFIED event"] --> B["Controller updates object"]
-    B --> C["Another MODIFIED event"]
-    C --> D["Controller updates object again"]
-    D --> E["Repeats forever"]
+    B --> C["New MODIFIED event"]
+    C --> D["Controller reconciles again"]
+    D --> E["Updates object again"]
     E -.-> A
 ```
 
@@ -9579,16 +9590,18 @@ The lifecycle is:
 
 The relationship looks like this:
 
+**Figure 15.4 - Controller manager lifecycle and event subscriptions**
 ```mermaid
 flowchart TD
     Server["API Server"] --> Manager["Controller Manager"]
+
     Manager --> Order["OrderController"]
     Manager --> Invoice["InvoiceController"]
     Manager --> Other["Future Controllers"]
 
-    Order --> EventBus["EventBus"]
-    Invoice --> EventBus
-    Other --> EventBus
+    EventBus["EventBus"] -->|"events"| Order
+    EventBus -->|"events"| Invoice
+    EventBus -->|"events"| Other
 ```
 
 The manager also provides an important separation between application startup
@@ -9773,12 +9786,13 @@ to locate the `orders` resource and perform reconciliation updates. When the
 controller changes an order through storage, the normal resource lifecycle
 continues:
 
+**Figure 15.5 - Controller update flow through the resource lifecycle**
 ```mermaid
 flowchart TD
     A["OrderController"] --> B["Registry.Lookup(''orders'')"]
     B --> C["Storage.Update()"]
     C --> D["EventBus.Publish(MODIFIED)"]
-    D --> E["Watch clients and other controllers"]
+    D --> E["Event Subscribers"]
 ```
 
 This preserves the framework's central design rule: all resource changes flow
@@ -9805,17 +9819,19 @@ exiting.
 After this change, the server contains all of the major pieces of a
 controller-driven architecture:
 
-```mermaid
+**Figure 15.6 - Complete controller-driven resource lifecycle**
+```mermaid {scale=0.5}
 flowchart TD
     A["HTTP Request"] --> B["Storage"]
     B --> C["Event Bus"]
 
     C --> D["Watch clients"]
-    C --> E["Controllers"]
-
-    E --> F["Reconcile"]
-    F --> G["Storage Update"]
-    G --> B
+    C --> E["Controller Manager"]
+    
+    E --> F["Controllers"]
+    F --> G["Reconcile"]
+    G --> H["Storage.Update()"]
+    H --> B
 ```
 
 The API server can now do more than store and retrieve objects. It can observe
@@ -9823,7 +9839,7 @@ changes, execute automated reactions, and continuously maintain resource state.
 Add the code in Listing 15.3 between the plugin loader code and the start
 serve go routine.
 
-**Listing 15.3 — `cmd/api-server/main.go` (controller additions)**
+**Listing 15.4 — `cmd/api-server/main.go` (controller additions)**
 
 ```go
 	// Initialize the controller manager and register controllers
@@ -9866,9 +9882,9 @@ the API server only records the requested state change and publishes an event.
 Controllers then observe those events and decide whether additional actions are
 required.
 
-**Figure 15.1 — The reconciliation loop**
-
+**Figure 15.7 — The reconciliation loop**
 ```mermaid
+%%{init: {"sequence": {"useMaxWidth": false}}}%%
 sequenceDiagram
     participant U as apictl create
     participant API as Server
@@ -10255,7 +10271,7 @@ Every file you wrote, and the chapter that introduced it.
 A single script that exercises everything. Save as `demo.sh`.
 Start the server and ensure that the **invoice** plugin is **not** loaded.
 
-
+**Listing B.1 - Demo script**
 ```bash
 #!/bin/bash
 
@@ -10401,13 +10417,618 @@ chmod +x demo.sh
 ./demo.sh
 ```
 
-You should see: built-in resources, a created user, `invoices` appearing after the
-CRD, an invoice stored and listed, and an order that is `ADDED` then automatically
-`MODIFIED` to `processing` by the controller — all without ever restarting the
-server.
+You should see: built-in resources, a created user, `invoices` appearing after
+the CRD, an invoice stored and listed, and an order that is `ADDED` then
+automatically `MODIFIED` to `processing` by the controller — all without ever
+restarting the server.
 
 ---
 
 *You have now designed and implemented a runtime-extensible API platform and its
-client, from an empty directory to a working, event-driven system — with a running
-program at the end of every chapter.*
+client, from an empty directory to a working, event-driven system — with a
+running program at the end of every chapter.*
+
+
+
+## Appendix C: Storage Factory [DRAFT]
+
+**Listing C.1 - `pkg/api/storage.go`**
+```go
+// pkg/api/storage.go
+// Storage defines the persistence interface for all resources.
+//
+// By depending on this interface rather than a concrete storage backend,
+// the framework is agnostic to HOW data is stored. Implementations can be:
+// - In-memory (provided here)
+// - SQL databases (PostgreSQL, MySQL, etc.)
+// - NoSQL databases (MongoDB, DynamoDB, etc.)
+// - Cloud storage (S3, Google Cloud Storage, etc.)
+// - Distributed systems (etcd, Consul, etc.)
+//
+// This is identical to how the API server abstracts storage behind
+// StorageInterface.
+
+package api
+
+type Storage interface {
+	// List returns all stored objects.
+	List() ([]any, error)
+
+	// Get retrieves a single object by its ID.
+	Get(id string) (any, error)
+
+	// Create stores a new object.
+	// The object should have an "id" field that serves as the unique key.
+	Create(obj any) error
+
+	// Update modifies an existing object.
+	Update(id string, obj any) error
+
+	// Delete removes an object by ID.
+	Delete(id string) error
+
+	// SetEventBus sets the event bus for the storage implementation.
+	SetEventBus(bus EventBus, resource string)
+
+	// Close closes the storage and releases any resources.
+	Close() error
+}
+
+```
+
+
+**Listing C.2 - `pkg/api/storage_factory.go`**
+```go
+// pkg/api/storage_factory.go
+//
+// This file provides a factory function to create a Storage implementation
+// based on the configured backend. The backend can be selected via the
+// API_STORAGE environment variable. Supported backends include:
+// - memory: In-memory storage (for testing and development)
+// - sqlite: SQLite database storage (default)
+//
+// This allows the API server to be agnostic to the underlying storage
+// implementation, enabling flexibility and easier testing.
+// The factory function returns a Storage interface, which can be used
+// interchangeably regardless of the actual backend.
+
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type StorageBackend string
+
+const (
+	StorageMemory StorageBackend = "memory"
+	StorageSQLite StorageBackend = "sqlite"
+)
+
+// NewStorage creates a new Storage implementation based on the configured
+// backend.
+func NewStorage() Storage {
+	backend := StorageBackend(os.Getenv("API_STORAGE"))
+
+	if backend == "" {
+		backend = StorageSQLite
+	}
+
+	switch backend {
+	case StorageMemory:
+		return NewMemoryStorage()
+
+	case StorageSQLite:
+		return NewSQLiteStorage()
+
+	default:
+		panic(fmt.Sprintf("unknown storage backend: %s", backend))
+	}
+}
+
+// extractID pulls the ID from an object by marshalling to JSON.
+// This works for any type that has an "id" JSON field.
+func extractID(obj any) (string, error) {
+
+	// Marshal the object to its JSON representation.
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return "", fmt.Errorf("marshal error: %w", err)
+	}
+
+	// Unmarshal into a generic map for dynamic field lookup.
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", fmt.Errorf("unmarshal error: %w", err)
+	}
+
+	// Look up the "id" field.
+	idVal, exists := m["id"]
+	if !exists {
+		return "", fmt.Errorf("object missing 'id' field")
+	}
+
+	// Convert the ID to its string representation.
+	id := fmt.Sprintf("%v", idVal)
+	if id == "" || id == "<nil>" {
+		return "", fmt.Errorf("id field is empty or nil")
+	}
+
+	return id, nil
+}
+
+```
+
+
+**Listing C.3 - `pkg/api/storage_memory.go`**
+```go
+// pkg/api/storage_memory.go
+//
+// This file defines the Storage interface for the dynamic API framework.
+// MemoryStorage is a simple in-memory implementation of the Storage interface.
+// It provides basic CRUD operations and integrates with the EventBus to publish
+// events when resources are created, updated, or deleted. This implementation
+// is intended for testing and development purposes, as it does not persist data
+// across server restarts.
+
+package api
+
+import (
+	"fmt"
+	"log"
+	"sync"
+	"time"
+)
+
+// MemoryStorage is a simple, thread-safe in-memory storage implementation.
+//
+// All objects are stored in a map protected by a sync.RWMutex.
+// This provides basic ACID properties for this example.
+//
+// For production use, you would replace this with a real database.
+//
+// Integration with EventBus:
+// When an object is created, updated, or deleted, MemoryStorage publishes
+// an event to the EventBus. This allows watch clients and controllers
+// to react to changes without polling.
+type MemoryStorage struct {
+	mu       sync.RWMutex
+	items    map[string]any
+	eventBus EventBus
+	resource string
+}
+
+// NewMemoryStorage creates a new in-memory storage instance.
+func NewMemoryStorage() Storage {
+	log.Println("Using in-memory storage backend (for testing and development)")
+	return &MemoryStorage{
+		items: make(map[string]any),
+	}
+}
+
+// SetEventBus attaches an event bus to this storage.
+// Events will be published when objects are created, updated, or deleted.
+// This must be called after NewMemoryStorage and before using the storage.
+func (s *MemoryStorage) SetEventBus(bus EventBus, resource string) {
+	s.eventBus = bus
+	s.resource = resource
+}
+
+// List returns a copy of all stored items.
+func (s *MemoryStorage) List() ([]any, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]any, 0, len(s.items))
+	for _, item := range s.items {
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// Get retrieves an item by ID.
+func (s *MemoryStorage) Get(id string) (any, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	item, exists := s.items[id]
+	if !exists {
+		return nil, fmt.Errorf("not found: %s", id)
+	}
+	return item, nil
+}
+
+// Create stores a new item.
+// Expects the item to have an "id" field in its JSON representation.
+// After storing, publishes an ADDED event if an event bus is attached.
+func (s *MemoryStorage) Create(obj any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id, err := extractID(obj)
+	if err != nil {
+		return err
+	}
+
+	if _, exists := s.items[id]; exists {
+		return fmt.Errorf("already exists: %s", id)
+	}
+
+	s.items[id] = obj
+
+	// Publish ADDED event if event bus is attached
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Added,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+
+	return nil
+}
+
+// Update modifies an existing item.
+// After updating, publishes a MODIFIED event if an event bus is attached.
+func (s *MemoryStorage) Update(id string, obj any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.items[id]; !exists {
+		return fmt.Errorf("not found: %s", id)
+	}
+
+	s.items[id] = obj
+
+	// Publish MODIFIED event if event bus is attached
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Modified,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+
+	return nil
+}
+
+// Delete removes an item by ID.
+// Before deleting, publishes a DELETED event if an event bus is attached.
+// The event contains the last state of the object.
+func (s *MemoryStorage) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	obj, exists := s.items[id]
+	if !exists {
+		return fmt.Errorf("not found: %s", id)
+	}
+
+	delete(s.items, id)
+
+	// Publish DELETED event if event bus is attached
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Deleted,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+
+	return nil
+}
+
+// Close is a no-op for MemoryStorage since it doesn't hold external resources.
+func (s *MemoryStorage) Close() error {
+	return nil
+}
+
+```
+
+
+**Listing C.4 - `pkg/api/storage_sqlite.go`**
+```go
+// pkg/api/storage_sqlite.go
+//
+// This file implements a SQLite-based storage backend for the dynamic API
+// framework.
+// SQLiteStorage provides a persistent storage solution using SQLite, allowing
+// resources to be stored in a lightweight relational database. It implements
+// the Storage interface, enabling CRUD operations and event publishing through
+// the EventBus.
+
+package api
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"time"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+const (
+	databaseFile = "api-server.db" // SQLite database file
+	tableName    = "objects"       // Table name for storing objects
+)
+
+type SQLiteStorage struct {
+	db       *sql.DB  // Database connection
+	eventBus EventBus // Event bus for publishing resource change events
+	resource string   // Resource name associated with this storage instance
+}
+
+// NewSQLiteStorage creates the default storage backend.
+//
+// Although the name remains "SQLiteStorage" for compatibility,
+// the implementation uses SQLite.
+func NewSQLiteStorage() Storage {
+	db, err := sql.Open("sqlite3", databaseFile)
+	if err != nil {
+		panic(err)
+	}
+
+	storage := &SQLiteStorage{
+		db: db,
+	}
+
+	if err := storage.initialize(); err != nil {
+		panic(err)
+	}
+	log.Println("Using SQLite storage backend (default)")
+	return storage
+}
+
+// initialize sets up the SQLite database schema if it doesn't already exist.
+func (s *SQLiteStorage) initialize() error {
+	_, err := s.db.Exec(`
+        CREATE TABLE IF NOT EXISTS objects
+        (
+            resource   TEXT NOT NULL,
+            id         TEXT NOT NULL,
+            data       TEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+
+            PRIMARY KEY(resource, id)
+        );
+    `)
+
+	return err
+}
+
+// SetEventBus attaches an event bus to this storage.
+// Events will be published when objects are created, updated, or deleted.
+// This must be called after NewSQLiteStorage and before using the storage.
+func (s *SQLiteStorage) SetEventBus(bus EventBus, resource string) {
+	s.eventBus = bus
+	s.resource = resource
+}
+
+// List returns a copy of all stored items for the associated resource. It
+// retrieves the data from the SQLite database, unmarshals it into Go objects,
+// and returns them as a slice.
+func (s *SQLiteStorage) List() ([]any, error) {
+	rows, err := s.db.Query(
+		`
+        SELECT data
+        FROM objects
+        WHERE resource = ?
+        ORDER BY id
+        `,
+		s.resource,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []any
+
+	for rows.Next() {
+		var data []byte
+
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+
+		var obj any
+
+		if err := json.Unmarshal(data, &obj); err != nil {
+			return nil, err
+		}
+
+		result = append(result, obj)
+	}
+
+	return result, rows.Err()
+}
+
+// Get retrieves an item by ID for the associated resource. It queries the SQLite
+// database, unmarshals the data into a Go object, and returns it.
+func (s *SQLiteStorage) Get(id string) (any, error) {
+	var data []byte
+
+	err := s.db.QueryRow(
+		`
+        SELECT data
+        FROM objects
+        WHERE resource = ?
+        AND id = ?
+        `,
+		s.resource,
+		id,
+	).Scan(&data)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("not found: %s", id)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var obj any
+
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+
+	return obj, nil
+}
+
+// Create stores a new item for the associated resource. It expects the item to
+// have an "id" field in its JSON representation. After storing, it publishes an
+// ADDED event if an event bus is attached.
+func (s *SQLiteStorage) Create(obj any) error {
+	id, err := extractID(obj)
+	if err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	_, err = s.db.Exec(
+		`
+        INSERT INTO objects
+            ( resource, id, data, created_at, updated_at )
+        VALUES
+            ( ?, ?, ?, ?, ? )
+        `,
+		s.resource,
+		id,
+		data,
+		now,
+		now,
+	)
+
+	if err != nil {
+		return fmt.Errorf("already exists: %s", id)
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Added,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: now,
+		})
+	}
+
+	return nil
+}
+
+// Update modifies an existing item for the associated resource. It updates the
+// data in the SQLite database and publishes a MODIFIED event if an event bus is
+// attached.
+func (s *SQLiteStorage) Update(id string, obj any) error {
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return err
+	}
+
+	result, err := s.db.Exec(
+		`
+        UPDATE objects
+        SET
+            data = ?,
+            updated_at = ?
+        WHERE
+            resource = ?
+            AND id = ?
+        `,
+		data,
+		time.Now(),
+		s.resource,
+		id,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("not found: %s", id)
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Modified,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+
+	return nil
+}
+
+// Delete removes an item by ID for the associated resource. It deletes the data
+// from the SQLite database and publishes a DELETED event if an event bus is
+// attached.
+func (s *SQLiteStorage) Delete(id string) error {
+	obj, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+
+	result, err := s.db.Exec(
+		`
+        DELETE FROM objects
+        WHERE
+            resource = ?
+            AND id = ?
+        `,
+		s.resource,
+		id,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("not found: %s", id)
+	}
+
+	if s.eventBus != nil {
+		s.eventBus.Publish(Event{
+			Type:      Deleted,
+			Resource:  s.resource,
+			Object:    obj,
+			Timestamp: time.Now(),
+		})
+	}
+
+	return nil
+}
+
+// Close closes the SQLite database connection. It should be called when the
+// storage is no longer needed to release resources.
+func (s *SQLiteStorage) Close() error {
+	return s.db.Close()
+}
+
+```
