@@ -40,7 +40,7 @@ type Event struct {
 	// Type indicates what happened: Added, Modified, or Deleted.
 	Type EventType `json:"type"`
 
-	// Resource is the name of the resource that changed (e.g., "users", "orders").
+	// Resource is the name of the resource that change.
 	Resource string `json:"resource"`
 
 	// Object is the resource object (after the change).
@@ -51,11 +51,12 @@ type Event struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// Subscription represents a client's subscription to events for a specific resource.
+// Subscription represents a client's subscription to events for a specific
+// resource.
 //
-// Subscribers receive events through a channel and must actively drain the channel
-// to avoid blocking other subscribers. The EventBus implementation ensures that
-// no subscriber can block others.
+// Subscribers receive events through a channel and must actively drain the
+// channel to avoid blocking other subscribers. The EventBus implementation
+// ensures that no subscriber can block others.
 type Subscription struct {
 	// Resource is the resource name this subscription is for.
 	Resource string
@@ -67,7 +68,7 @@ type Subscription struct {
 	// done signals that the subscription should be closed.
 	done chan struct{}
 
-	// internal send channel (write-only) - closed by EventBus when unsubscribing.
+	// internal send channel - closed by EventBus when unsubscribing.
 	sendCh chan Event
 }
 

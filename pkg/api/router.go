@@ -26,7 +26,8 @@ import (
 //
 //	GET /users, POST /users, GET /users/{id}, etc.
 //
-// This router creates only GENERIC routes that determine the resource at runtime:
+// This router creates only GENERIC routes that determine the resource at
+// runtime:
 //
 //	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
 //
@@ -52,7 +53,12 @@ type Router struct {
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+func NewRouter(
+	registry Registry,
+	scheme Scheme,
+	crdRegistry CRDRegistry,
+	eventBus EventBus,
+) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
@@ -63,7 +69,8 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventB
 }
 
 // Setup registers the generic routes.
-// These routes are created ONCE and never change, even when new resources are added.
+// These routes are created ONCE and never change, even when new resources are
+// added.
 func (r *Router) Setup() {
 	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
@@ -130,11 +137,14 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 
 	resourceName := parts[0]
 
-	// Look up resource in registry
-	// This happens on EVERY request, which is fine because Lookup uses a read lock.
+	// Look up resource in registry This happens on EVERY request, which is fine
+	// because Lookup uses a read lock.
 	resource, ok := r.registry.Lookup(resourceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("resource %q not found", resourceName), http.StatusNotFound)
+		http.Error(w,
+			fmt.Sprintf("resource %q not found", resourceName),
+			http.StatusNotFound,
+		)
 		return
 	}
 
@@ -152,7 +162,11 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 }
 
 // routeListOrCreate handles list (GET) or create (POST) operations.
-func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) routeListOrCreate(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	switch req.Method {
 	case http.MethodGet:
 		r.list(w, req, resource)
@@ -164,7 +178,12 @@ func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, res
 }
 
 // routeItemOp handles get, update, or delete operations on a specific item.
-func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) routeItemOp(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+	id string,
+) {
 	switch req.Method {
 	case http.MethodGet:
 		r.get(w, req, resource, id)
@@ -184,7 +203,11 @@ func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource 
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
 // Supports ?watch=true for streaming events instead of listing.
-func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) list(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Check if client is requesting to watch events
 	if req.URL.Query().Get("watch") == "true" {
 		r.watch(w, req, resource)
@@ -209,7 +232,12 @@ func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resourc
 
 // get handles GET /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
+func (r *Router) get(
+	w http.ResponseWriter,
+	_ *http.Request,
+	resource Resource,
+	id string,
+) {
 	object, err := resource.Storage().Get(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -224,7 +252,11 @@ func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, 
 // Generic handler that works for ALL resources.
 // The key insight: we ask the Scheme to create an empty object.
 // We don't know what type it is, but we can unmarshal JSON into it.
-func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) create(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Read and limit request body
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
@@ -241,7 +273,11 @@ func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resou
 
 	// Unmarshal incoming JSON into the empty object
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
-		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		http.Error(
+			w,
+			fmt.Sprintf("invalid JSON: %v", err),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -266,7 +302,12 @@ func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resou
 
 // update handles PUT /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) update(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+	id string,
+) {
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
 
@@ -277,7 +318,11 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 	}
 
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
-		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		http.Error(
+			w,
+			fmt.Sprintf("invalid JSON: %v", err),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -296,7 +341,12 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 
 // delete handles DELETE /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) delete(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
+func (r *Router) delete(
+	w http.ResponseWriter,
+	_ *http.Request,
+	resource Resource,
+	id string,
+) {
 	if err := resource.Storage().Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -369,7 +419,11 @@ func (r *Router) createCRD(w http.ResponseWriter, req *http.Request) {
 
 	var crd CRDDefinition
 	if err := json.NewDecoder(body).Decode(&crd); err != nil {
-		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		http.Error(
+			w,
+			fmt.Sprintf("invalid JSON: %v", err),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -466,7 +520,11 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 	// Get the CRD to find the plural name
 	crd, exists := r.crdRegistry.GetCRD(crdName)
 	if !exists {
-		http.Error(w, fmt.Sprintf("CRD %q not found", crdName), http.StatusNotFound)
+		http.Error(
+			w,
+			fmt.Sprintf("CRD %q not found", crdName),
+			http.StatusNotFound,
+		)
 		return
 	}
 
@@ -627,7 +685,11 @@ func (r *Router) listPlugins(w http.ResponseWriter, req *http.Request) {
 // 2. Handler subscribes to the event bus for this resource
 // 3. Events are streamed to client as they occur
 // 4. No polling needed - truly event-driven
-func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) watch(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Check if client supports Server-Sent Events (requires HTTP/1.1)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -671,7 +733,8 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 
 		case <-keepAliveTicker.C:
 			// Send keep-alive comment to prevent timeout
-			// SSE spec: lines starting with ':' are comments and ignored by clients
+			// SSE spec: lines starting with':' are comments and
+			// ignored by clients
 			fmt.Fprintf(w, ":keep-alive\n\n")
 			flusher.Flush()
 

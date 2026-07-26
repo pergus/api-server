@@ -42,7 +42,10 @@ type OrderController struct {
 
 // NewOrderController creates a new order controller.
 // The registry is used to update orders during reconciliation.
-func NewOrderController(eventBus api.EventBus, registry api.Registry) *OrderController {
+func NewOrderController(
+	eventBus api.EventBus,
+	registry api.Registry,
+) *OrderController {
 	return &OrderController{
 		baseController: baseController{
 			name:     "OrderController",
@@ -80,7 +83,10 @@ func (oc *OrderController) Reconcile(event api.Event) error {
 // reconcileAdded handles newly created orders.
 // Initializes order state and sets status to "processing".
 func (oc *OrderController) reconcileAdded(event api.Event) error {
-	log.Printf("[%s] NEW ORDER - calculating totals and setting status", oc.Name())
+	log.Printf(
+		"[%s] NEW ORDER - calculating totals and setting status",
+		oc.Name(),
+	)
 
 	// Parse the order object
 	orderData, err := json.Marshal(event.Object)
@@ -105,7 +111,12 @@ func (oc *OrderController) reconcileAdded(event api.Event) error {
 		order["total"] = 0
 	}
 
-	log.Printf("[%s] Order %s: status=processing, total=$%.2f", oc.Name(), id, order["total"])
+	log.Printf(
+		"[%s] Order %s: status=processing, total=$%.2f",
+		oc.Name(),
+		id,
+		order["total"],
+	)
 
 	// Update the order in storage
 	// This will generate a MODIFIED event which other watchers will see
@@ -131,7 +142,12 @@ func (oc *OrderController) reconcileModified(event api.Event) error {
 	var order map[string]interface{}
 	json.Unmarshal(orderData, &order)
 
-	log.Printf("[%s] Order %s MODIFIED (status=%s)", oc.Name(), order["id"], order["status"])
+	log.Printf(
+		"[%s] Order %s MODIFIED (status=%s)", 
+		oc.Name(), 
+		order["id"], 
+		order["status"],
+	)
 	return nil
 }
 

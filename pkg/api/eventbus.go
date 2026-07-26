@@ -108,7 +108,11 @@ func (b *InProcessEventBus) Subscribe(resource string) *Subscription {
 	}
 
 	b.subscribers[resource] = append(b.subscribers[resource], sub)
-	log.Printf("Subscribe: %s (now %d watchers)", resource, len(b.subscribers[resource]))
+	log.Printf(
+		"Subscribe: %s (now %d watchers)",
+		resource,
+		len(b.subscribers[resource]),
+	)
 
 	return sub
 }
@@ -131,7 +135,11 @@ func (b *InProcessEventBus) Unsubscribe(sub *Subscription) {
 				// Remove from list
 				b.subscribers[sub.Resource] = append(subs[:i], subs[i+1:]...)
 
-				log.Printf("Unsubscribe: %s (now %d watchers)", sub.Resource, len(b.subscribers[sub.Resource]))
+				log.Printf(
+					"Unsubscribe: %s (now %d watchers)", 
+					sub.Resource, 
+					len(b.subscribers[sub.Resource]),
+				)
 				return
 			}
 		}
@@ -139,7 +147,8 @@ func (b *InProcessEventBus) Unsubscribe(sub *Subscription) {
 }
 
 // publishLoop runs in a goroutine and handles event distribution.
-// It ensures publishers never block by running distribution in separate goroutines.
+// It ensures publishers never block by running distribution in separate
+// goroutines.
 func (b *InProcessEventBus) publishLoop() {
 	for {
 		select {

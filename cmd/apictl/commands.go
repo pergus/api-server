@@ -377,41 +377,45 @@ func cmdExplain(c *Client, args []string) {
 		fmt.Fprintf(os.Stderr, "Resource not found: %s\n", resource)
 		os.Exit(1)
 	}
-
 	// Try to find CRD/schema information
 	crds, err := c.ListCRDs()
 	if err == nil {
 		for _, crd := range crds {
-			if crdPlural, ok := crd["plural"].(string); ok && crdPlural == resource {
-				// Get CRD metadata
-				kind, _ := crd["kind"].(string)
-				group, _ := crd["group"].(string)
-				version, _ := crd["version"].(string)
+			crdPlural, ok := crd["plural"].(string)
+			if !ok || crdPlural != resource {
+				continue
+			}
 
-				fmt.Printf("Kind: %s\n", kind)
-				fmt.Printf("API: %s/%s\n", group, version)
-				fmt.Println()
+			// Get CRD metadata
+			kind, _ := crd["kind"].(string)
+			group, _ := crd["group"].(string)
+			version, _ := crd["version"].(string)
 
-				// Show schema
-				schema, hasSchema := crd["schema"]
-				if hasSchema && schema != nil {
-					if schemaMap, ok := schema.(map[string]interface{}); ok && len(schemaMap) > 0 {
-						fmt.Println("Schema:")
-						data, _ := json.MarshalIndent(schemaMap, "", "  ")
-						fmt.Printf("%s\n", string(data))
-					}
-				}
+			fmt.Printf("Kind: %s\n", kind)
+			fmt.Printf("API: %s/%s\n", group, version)
+			fmt.Println()
 
-				// Show sample object if available
-				items, err := c.ListResources(resource)
-				if err == nil && len(items) > 0 {
-					fmt.Println()
-					fmt.Println("Sample object:")
-					data, _ := json.MarshalIndent(items[0], "", "  ")
+			// Show schema
+			schema, hasSchema := crd["schema"]
+			if hasSchema && schema != nil {
+				schemaMap, ok := schema.(map[string]interface{})
+				if ok && len(schemaMap) > 0 {
+					fmt.Println("Schema:")
+					data, _ := json.MarshalIndent(schemaMap, "", "  ")
 					fmt.Printf("%s\n", string(data))
 				}
-				return
 			}
+
+			// Show sample object if available
+			items, err := c.ListResources(resource)
+			if err == nil && len(items) > 0 {
+				fmt.Println()
+				fmt.Println("Sample object:")
+				data, _ := json.MarshalIndent(items[0], "", "  ")
+				fmt.Printf("%s\n", string(data))
+			}
+
+			return
 		}
 	}
 

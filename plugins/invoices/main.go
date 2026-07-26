@@ -9,9 +9,10 @@
 // - Becomes immediately available through the API
 //
 // To use this plugin:
-// 1. Build it: go build -buildmode=plugin -o invoices.so ./plugins/invoices/main.go
-// 2. Copy the .so file to the plugins/ directory while the server is running
-// 3. The server will automatically load it and make /api/invoices available
+//  1. Build it: go build -buildmode=plugin -o invoices.so
+//     ./plugins/invoices/main.go
+//  2. Copy the .so file to the plugins/ directory while the server is running
+//  3. The server will automatically load it and make /api/invoices available
 //
 // This demonstrates that new API resources can be introduced without:
 // - Recompiling the server
@@ -73,7 +74,10 @@ func (p *InvoicePlugin) Name() string {
 }
 
 // Register adds the invoice resource to the server.
-func (p *InvoicePlugin) Register(registry api.Registry, scheme api.Scheme) error {
+func (p *InvoicePlugin) Register(
+	registry api.Registry,
+	scheme api.Scheme,
+) error {
 	log.Println("[InvoicePlugin] Registering invoice resource and type")
 
 	// Register the resource
@@ -82,7 +86,9 @@ func (p *InvoicePlugin) Register(registry api.Registry, scheme api.Scheme) error
 	}
 
 	// Register the type factory
-	if err := scheme.Register("invoices", func() any { return &Invoice{} }); err != nil {
+	if err := scheme.Register("invoices", func() any {
+		return &Invoice{}
+	}); err != nil {
 		return err
 	}
 

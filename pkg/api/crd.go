@@ -40,7 +40,8 @@ func (c *CRDDefinition) Validate() error {
 	return nil
 }
 
-// FullName returns the fully qualified name: plural.group, e.g. "invoices.example.io".
+// FullName returns the fully qualified name: plural.group, e.g.
+// "invoices.example.io".
 func (c *CRDDefinition) FullName() string {
 	return fmt.Sprintf("%s.%s", c.Plural, c.Group)
 }

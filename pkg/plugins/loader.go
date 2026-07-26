@@ -50,7 +50,10 @@ type LoadedPlugin struct {
 }
 
 // NewLoader creates a plugin loader.
-func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Loader {
+func NewLoader(pluginDir string,
+	registry api.Registry,
+	scheme api.Scheme,
+) *Loader {
 	return &Loader{
 		pluginDir: pluginDir,
 		registry:  registry,

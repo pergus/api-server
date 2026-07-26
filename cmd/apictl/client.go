@@ -4,7 +4,8 @@
 // dynamic API server. The Client provides functions to list resources, retrieve
 // specific resources, create, update, and delete resources, as well as manage
 // Custom Resource Definitions (CRDs) and plugins. It communicates with the API
-// server over HTTP and handles JSON encoding/decoding of requests and responses.
+// server over HTTP and handles JSON encoding/decoding of requests and
+// responses.
 
 package main
 
@@ -107,7 +108,10 @@ func (c *Client) GetAPIs() ([]string, error) {
 }
 
 // ListResources lists all objects of a resource type.
-func (c *Client) ListResources(resource string) ([]map[string]interface{}, error) {
+func (c *Client) ListResources(
+	resource string) ([]map[string]interface{},
+	error,
+) {
 	resp, err := c.get(fmt.Sprintf("/api/%s", resource))
 	if err != nil {
 		return nil, err
@@ -133,7 +137,10 @@ func (c *Client) ListResources(resource string) ([]map[string]interface{}, error
 }
 
 // GetResource retrieves a specific resource.
-func (c *Client) GetResource(resource, id string) (map[string]interface{}, error) {
+func (c *Client) GetResource(
+	resource, id string) (map[string]interface{},
+	error,
+) {
 	resp, err := c.get(fmt.Sprintf("/api/%s/%s", resource, id))
 	if err != nil {
 		return nil, err
@@ -147,7 +154,10 @@ func (c *Client) GetResource(resource, id string) (map[string]interface{}, error
 }
 
 // CreateResource creates a new resource.
-func (c *Client) CreateResource(resource string, obj map[string]interface{}) (string, error) {
+func (c *Client) CreateResource(
+	resource string,
+	obj map[string]interface{},
+) (string, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return "", err
@@ -171,7 +181,10 @@ func (c *Client) CreateResource(resource string, obj map[string]interface{}) (st
 
 // UpdateResource updates an existing resource.
 // Not used in the current code but provided for completeness.
-func (c *Client) UpdateResource(resource, id string, obj map[string]interface{}) error {
+func (c *Client) UpdateResource(
+	resource, id string,
+	obj map[string]interface{},
+) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
@@ -358,8 +371,9 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 				case events <- event:
 				case <-time.After(100 * time.Millisecond):
 					// Event channel full, drop and log
+					err := fmt.Errorf("event channel full, dropping event")
 					select {
-					case errors <- fmt.Errorf("event channel full, dropping event"):
+					case errors <- err:
 					default:
 					}
 				}

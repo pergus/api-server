@@ -112,8 +112,10 @@ func (s *Server) Start() error {
 	log.Printf("Starting server on http://localhost:%d", s.port)
 	log.Printf("Discovery: GET http://localhost:%d/api", s.port)
 
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+	if err := s.httpServer.ListenAndServe(); err != nil {
+		if err != http.ErrServerClosed {
+			return err
+		}
 	}
 
 	return nil
@@ -131,7 +133,8 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // RegisterResource registers a resource at runtime.
 // This makes the resource immediately available without restarting the server.
-// Also attaches the event bus to the resource's storage so events are published.
+// Also attaches the event bus to the resource's storage so events are
+// published.
 func (s *Server) RegisterResource(resource Resource) error {
 	// Attach event bus to storage if storage is MemoryStorage
 	if ms, ok := resource.Storage().(*MemoryStorage); ok {

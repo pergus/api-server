@@ -108,7 +108,10 @@ type baseController struct {
 
 // runLoop runs the main event processing loop.
 // Calls reconcile() for each event.
-func (bc *baseController) runLoop(ctx context.Context, reconcile func(event api.Event) error) error {
+func (bc *baseController) runLoop(
+	ctx context.Context,
+	reconcile func(event api.Event) error,
+) error {
 	// Subscribe to events
 	sub := bc.eventBus.Subscribe(bc.resource)
 	defer bc.eventBus.Unsubscribe(sub)
@@ -119,7 +122,12 @@ func (bc *baseController) runLoop(ctx context.Context, reconcile func(event api.
 	for {
 		select {
 		case event := <-sub.Events:
-			log.Printf("[%s] received %s event for %s", bc.name, event.Type, event.Resource)
+			log.Printf(
+				"[%s] received %s event for %s",
+				bc.name,
+				event.Type,
+				event.Resource,
+			)
 			if err := reconcile(event); err != nil {
 				log.Printf("[%s] reconcile error: %v", bc.name, err)
 			}

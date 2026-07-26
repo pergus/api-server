@@ -1,6 +1,7 @@
 // pkg/plugins/interface.go
 //
-// Package plugins provides a plugin loading system for dynamic API extensibility.
+// Package plugins provides a plugin loading system for dynamic API
+// extensibility.
 //
 // Plugins are compiled Go code that register resources with the API server at
 // runtime.
@@ -24,8 +25,8 @@ import (
 
 // Plugin defines the interface that all plugins must implement.
 //
-// Each plugin is a separate Go package that exports a Plugin symbol.
-// When the plugin loads, the plugin manager calls Register() to add the plugin's
+// Each plugin is a separate Go package that exports a Plugin symbol. When the
+// plugin loads, the plugin manager calls Register() to add the plugin's
 // resources and types to the API server.
 type Plugin interface {
 	// Name returns the plugin name.

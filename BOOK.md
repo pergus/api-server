@@ -347,11 +347,11 @@ type Resource interface {
 	// Examples: "users", "products", "orders", "invoices"
 	Name() string
 
-	// NewObject returns a new, zero-value instance of this resource type. Called
-	// by generic handlers to create empty objects for JSON unmarshalling. The
-	// handler then decodes incoming JSON into this object.
-	//
-	// Example: returns &User{} for users, &Product{} for products
+    // NewObject returns a new, zero-value instance of this resource type.
+    // Called by generic handlers to create empty objects for JSON unmarshalling.
+    // The handler then decodes incoming JSON into this object.
+    //
+    // Example: returns &User{} for users, &Product{} for products
 	NewObject() any
 
 	// Storage returns the persistence layer for this resource.
@@ -1254,7 +1254,8 @@ import (
 //
 //	GET /users, POST /users, GET /users/{id}, etc.
 //
-// This router creates only GENERIC routes that determine the resource at runtime:
+// This router creates only GENERIC routes that determine the resource at
+// runtime:
 //
 //	GET /api/{resource}, POST /api/{resource}, GET /api/{resource}/{id}, etc.
 //
@@ -1281,7 +1282,12 @@ type Router struct {
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+func NewRouter(
+	registry Registry,
+	scheme Scheme,
+	/*crdRegistry CRDRegistry, (Added in Chapter 10) */
+	/*eventBus EventBus,       (Added in Chapter 13) */
+) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
@@ -1292,7 +1298,8 @@ func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventB
 }
 
 // Setup registers the generic routes.
-// These routes are created ONCE and never change, even when new resources are added.
+// These routes are created ONCE and never change, even when new resources are
+// added.
 func (r *Router) Setup() {
 	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
@@ -1421,11 +1428,14 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 
 	resourceName := parts[0]
 
-	// Look up resource in registry
-	// This happens on EVERY request, which is fine because Lookup uses a read lock.
+	// Look up resource in registry This happens on EVERY request, which is fine
+	// because Lookup uses a read lock.
 	resource, ok := r.registry.Lookup(resourceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("resource %q not found", resourceName), http.StatusNotFound)
+		http.Error(w,
+			fmt.Sprintf("resource %q not found", resourceName),
+			http.StatusNotFound,
+		)
 		return
 	}
 
@@ -1443,7 +1453,11 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 }
 
 // routeListOrCreate handles list (GET) or create (POST) operations.
-func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) routeListOrCreate(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	switch req.Method {
 	case http.MethodGet:
 		r.list(w, req, resource)
@@ -1455,7 +1469,12 @@ func (r *Router) routeListOrCreate(w http.ResponseWriter, req *http.Request, res
 }
 
 // routeItemOp handles get, update, or delete operations on a specific item.
-func (r *Router) routeItemOp(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) routeItemOp(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+	id string,
+) {
 	switch req.Method {
 	case http.MethodGet:
 		r.get(w, req, resource, id)
@@ -1532,7 +1551,11 @@ factory function in the scheme.
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
 // Supports ?watch=true for streaming events instead of listing.
-func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) list(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Check if client is requesting to watch events
 	if req.URL.Query().Get("watch") == "true" {
 		r.watch(w, req, resource)
@@ -1557,7 +1580,12 @@ func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resourc
 
 // get handles GET /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
+func (r *Router) get(
+	w http.ResponseWriter,
+	_ *http.Request,
+	resource Resource,
+	id string,
+) {
 	object, err := resource.Storage().Get(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -1572,7 +1600,11 @@ func (r *Router) get(w http.ResponseWriter, _ *http.Request, resource Resource, 
 // Generic handler that works for ALL resources.
 // The key insight: we ask the Scheme to create an empty object.
 // We don't know what type it is, but we can unmarshal JSON into it.
-func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) create(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Read and limit request body
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
@@ -1589,7 +1621,11 @@ func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resou
 
 	// Unmarshal incoming JSON into the empty object
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
-		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		http.Error(
+			w,
+			fmt.Sprintf("invalid JSON: %v", err),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -1614,7 +1650,12 @@ func (r *Router) create(w http.ResponseWriter, req *http.Request, resource Resou
 
 // update handles PUT /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resource, id string) {
+func (r *Router) update(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+	id string,
+) {
 	body := io.LimitReader(req.Body, 1024*1024)
 	defer req.Body.Close()
 
@@ -1625,7 +1666,11 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 	}
 
 	if err := json.NewDecoder(body).Decode(obj); err != nil {
-		http.Error(w, fmt.Sprintf("invalid JSON: %v", err), http.StatusBadRequest)
+		http.Error(
+			w,
+			fmt.Sprintf("invalid JSON: %v", err),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -1644,7 +1689,12 @@ func (r *Router) update(w http.ResponseWriter, req *http.Request, resource Resou
 
 // delete handles DELETE /api/{resource}/{id}
 // Generic handler that works for ALL resources.
-func (r *Router) delete(w http.ResponseWriter, _ *http.Request, resource Resource, id string) {
+func (r *Router) delete(
+	w http.ResponseWriter,
+	_ *http.Request,
+	resource Resource,
+	id string,
+) {
 	if err := resource.Storage().Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -2051,7 +2101,13 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(wrapped, r)
 
 		duration := time.Since(start)
-		log.Printf("[%s] %s completed: %d in %v", r.Method, r.URL.Path, wrapped.statusCode, duration)
+		log.Printf(
+			"[%s] %s completed: %d in %v",
+			r.Method,
+			r.URL.Path,
+			wrapped.statusCode,
+			duration,
+		)
 	})
 }
 
@@ -2061,7 +2117,11 @@ func RecoveryMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				log.Printf("PANIC: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				http.Error(
+					w,
+					"Internal server error",
+					http.StatusInternalServerError,
+				)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -2082,8 +2142,14 @@ func TimingMiddleware(next http.Handler) http.Handler {
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set(
+			"Access-Control-Allow-Methods",
+			"GET, POST, PUT, DELETE, OPTIONS",
+		)
+		w.Header().Set(
+			"Access-Control-Allow-Headers",
+			"Content-Type, Authorization",
+		)
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -2321,8 +2387,10 @@ func (s *Server) Start() error {
 	log.Printf("Starting server on http://localhost:%d", s.port)
 	log.Printf("Discovery: GET http://localhost:%d/api", s.port)
 
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return err
+	if err := s.httpServer.ListenAndServe(); err != nil {
+		if err != http.ErrServerClosed {
+			return err
+		}
 	}
 
 	return nil
@@ -2340,7 +2408,8 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // RegisterResource registers a resource at runtime.
 // This makes the resource immediately available without restarting the server.
-// Also attaches the event bus to the resource's storage so events are published.
+// Also attaches the event bus to the resource's storage so events are
+// published.
 func (s *Server) RegisterResource(resource Resource) error {
 	// Attach event bus to storage if storage is MemoryStorage
 	/* Added in Chapter 13
@@ -2466,11 +2535,11 @@ this example self-contained.
 ```go
 // pkg/resources/users.go
 //
-// This file defines the User resource type and its associated Resource implementation.
-// The User resource represents a user in an e-commerce system, with fields for ID,
-// name, email, and active status. The UserResource struct implements the Resource
-// interface, providing methods to create new User objects and manage their storage
-// using an in-memory storage backend.
+// This file defines the User resource type and its associated Resource
+// implementation. The User resource represents a user in an e-commerce system,
+// with fields for ID, name, email, and active status. The UserResource struct
+// implements the Resource interface, providing methods to create new User
+// objects and manage their storage using an in-memory storage backend.
 
 package resources
 
@@ -2686,7 +2755,25 @@ addition of new resources still requires no changes to the router or HTTP layer
 **Listing 7.4 — `cmd/api-server/main.go` (Chapter-7 version)**
 
 ```go
-// cmd/api-server/main.go - Chapter 7 version
+// cmd/api-server/main.go
+//
+// Command server starts the dynamic API server.
+//
+// This server demonstrates true runtime extensibility:
+// - Resources can be registered while the server is running
+// - New resources are immediately available through the API
+// - The HTTP router never changes
+// - The server never restarts
+//
+// The server:
+// 1. Creates the API framework (Registry, Scheme, Router)
+// 2. Registers built-in resources (users, products, orders)
+// 3. Starts a plugin watcher to load new resources dynamically
+// 4. Begins listening for HTTP requests
+//
+// At this point, plugins can be added to the plugins/ directory,
+// and they will be loaded automatically without restarting the server.
+
 package main
 
 import (
@@ -2710,7 +2797,11 @@ func main() {
 	if err := server.RegisterResource(resources.NewUserResource()); err != nil {
 		log.Fatalf("Failed to register users: %v", err)
 	}
-	if err := server.RegisterType("users", func() any { return &resources.User{} }); err != nil {
+
+	err := server.RegisterType("users", func() any {
+		return &resources.User{}
+	})
+	if err != nil {
 		log.Fatalf("Failed to register users type: %v", err)
 	}
 
@@ -2718,7 +2809,9 @@ func main() {
 	if err := server.RegisterResource(resources.NewProductResource()); err != nil {
 		log.Fatalf("Failed to register products: %v", err)
 	}
-	if err := server.RegisterType("products", func() any { return &resources.Product{} }); err != nil {
+	if err := server.RegisterType("products", func() any {
+		return &resources.Product{}
+	}); err != nil {
 		log.Fatalf("Failed to register products type: %v", err)
 	}
 
@@ -2726,7 +2819,9 @@ func main() {
 	if err := server.RegisterResource(resources.NewOrderResource()); err != nil {
 		log.Fatalf("Failed to register orders: %v", err)
 	}
-	if err := server.RegisterType("orders", func() any { return &resources.Order{} }); err != nil {
+	if err := server.RegisterType("orders", func() any {
+		return &resources.Order{}
+	}); err != nil {
 		log.Fatalf("Failed to register orders type: %v", err)
 	}
 
@@ -2772,7 +2867,7 @@ curl -s http://localhost:8080/api
 
 curl -s -X POST http://localhost:8080/api/users \
   -H 'Content-Type: application/json' \
-  -d '{"id":"alice","name":"Alice Johnson","email":"alice@example.com","is_active":true}'
+  -d '{"id":"alice","name":"Alice Johnson", "email":"alice@example.com","is_active":true}'
 # {"message":"users created","id":"alice"}
 
 curl -s http://localhost:8080/api/users/alice
@@ -2848,7 +2943,8 @@ conventions, the same client methods can communicate with it.
 // dynamic API server. The Client provides functions to list resources, retrieve
 // specific resources, create, update, and delete resources, as well as manage
 // Custom Resource Definitions (CRDs) and plugins. It communicates with the API
-// server over HTTP and handles JSON encoding/decoding of requests and responses.
+// server over HTTP and handles JSON encoding/decoding of requests and
+// responses..
 
 package main
 
@@ -2930,7 +3026,10 @@ func (c *Client) GetAPIs() ([]string, error) {
 }
 
 // ListResources lists all objects of a resource type.
-func (c *Client) ListResources(resource string) ([]map[string]interface{}, error) {
+func (c *Client) ListResources(
+	resource string) ([]map[string]interface{},
+	error,
+) {
 	resp, err := c.get(fmt.Sprintf("/api/%s", resource))
 	if err != nil {
 		return nil, err
@@ -2956,7 +3055,11 @@ func (c *Client) ListResources(resource string) ([]map[string]interface{}, error
 }
 
 // GetResource retrieves a specific resource.
-func (c *Client) GetResource(resource, id string) (map[string]interface{}, error) {
+// GetResource retrieves a specific resource.
+func (c *Client) GetResource(
+	resource, id string) (map[string]interface{},
+	error,
+) {
 	resp, err := c.get(fmt.Sprintf("/api/%s/%s", resource, id))
 	if err != nil {
 		return nil, err
@@ -2970,7 +3073,10 @@ func (c *Client) GetResource(resource, id string) (map[string]interface{}, error
 }
 
 // CreateResource creates a new resource.
-func (c *Client) CreateResource(resource string, obj map[string]interface{}) (string, error) {
+func (c *Client) CreateResource(
+	resource string,
+	obj map[string]interface{},
+) (string, error) {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return "", err
@@ -2994,7 +3100,10 @@ func (c *Client) CreateResource(resource string, obj map[string]interface{}) (st
 
 // UpdateResource updates an existing resource.
 // Not used in the current code but provided for completeness.
-func (c *Client) UpdateResource(resource, id string, obj map[string]interface{}) error {
+func (c *Client) UpdateResource(
+	resource, id string,
+	obj map[string]interface{},
+) error {
 	data, err := json.Marshal(obj)
 	if err != nil {
 		return err
@@ -3367,8 +3476,6 @@ func cmdAPIResources(c *Client) {
 	w.Flush()
 }
 
-
-
 // These commands are placeholders for functionality introduced in later
 // chapters. They allow the CLI entrypoint to compile while keeping the final
 // command structure visible from the beginning.
@@ -3692,7 +3799,6 @@ and the server performs the actual resource operations.
 
 
 **Listing 9.2 — `cmd/apictl/commands.go` (create, delete, apply)**
-
 ```go
 // -----------------------------------------------------------------------------
 // Mutating commands
@@ -3900,6 +4006,7 @@ as identifier extraction, pluralization, YAML conversion, and table rendering.
 This allows new resource types to become available without requiring changes
 throughout the command implementation.
 
+**Listing 9.3 — `cmd/apictl/commands.go` (Watch, Explain & Helpers)**
 ```go
 // -----------------------------------------------------------------------------
 // Watch
@@ -3949,36 +4056,41 @@ func cmdExplain(c *Client, args []string) {
 	crds, err := c.ListCRDs()
 	if err == nil {
 		for _, crd := range crds {
-			if crdPlural, ok := crd["plural"].(string); ok && crdPlural == resource {
-				// Get CRD metadata
-				kind, _ := crd["kind"].(string)
-				group, _ := crd["group"].(string)
-				version, _ := crd["version"].(string)
-
-				fmt.Printf("Kind: %s\n", kind)
-				fmt.Printf("API: %s/%s\n", group, version)
-				fmt.Println()
-
-				// Show schema
-				schema, hasSchema := crd["schema"]
-				if hasSchema && schema != nil {
-					if schemaMap, ok := schema.(map[string]interface{}); ok && len(schemaMap) > 0 {
-						fmt.Println("Schema:")
-						data, _ := json.MarshalIndent(schemaMap, "", "  ")
-						fmt.Printf("%s\n", string(data))
-					}
-				}
-
-				// Show sample object if available
-				items, err := c.ListResources(resource)
-				if err == nil && len(items) > 0 {
-					fmt.Println()
-					fmt.Println("Sample object:")
-					data, _ := json.MarshalIndent(items[0], "", "  ")
+			crdPlural, ok := crd["plural"].(string)
+			if !ok || crdPlural != resource {
+				continue
+			}
+	
+			// Get CRD metadata
+			kind, _ := crd["kind"].(string)
+			group, _ := crd["group"].(string)
+			version, _ := crd["version"].(string)
+	
+			fmt.Printf("Kind: %s\n", kind)
+			fmt.Printf("API: %s/%s\n", group, version)
+			fmt.Println()
+	
+			// Show schema
+			schema, hasSchema := crd["schema"]
+			if hasSchema && schema != nil {
+				schemaMap, ok := schema.(map[string]interface{})
+				if ok && len(schemaMap) > 0 {
+					fmt.Println("Schema:")
+					data, _ := json.MarshalIndent(schemaMap, "", "  ")
 					fmt.Printf("%s\n", string(data))
 				}
-				return
 			}
+	
+			// Show sample object if available
+			items, err := c.ListResources(resource)
+			if err == nil && len(items) > 0 {
+				fmt.Println()
+				fmt.Println("Sample object:")
+				data, _ := json.MarshalIndent(items[0], "", "  " )
+				fmt.Printf("%s\n", string(data))
+			}
+	
+			return
 		}
 	}
 
@@ -4427,13 +4539,14 @@ func (c *CRDDefinition) Validate() error {
 	return nil
 }
 
-// FullName returns the fully qualified name: plural.group, e.g. "invoices.example.io".
+// FullName returns the fully qualified name: plural.group, e.g.
+// "invoices.example.io".
 func (c *CRDDefinition) FullName() string {
 	return fmt.Sprintf("%s.%s", c.Plural, c.Group)
 }
 
 // APIPath returns "/apis/{group}/{version}/{plural}" for this CRD.
-// e.g., /apis/example.io/v1/invoices
+// e.g., /apis/example.io/v1/invoices.
 func (c *CRDDefinition) APIPath() string {
 	return fmt.Sprintf("/apis/%s/%s/%s", c.Group, c.Version, c.Plural)
 }
@@ -4903,7 +5016,13 @@ type Router struct {
 }
 
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry /*,  eventBus EventBus */) *Router {
+func NewRouter(
+	registry Registry,
+	scheme Scheme,
+	crdRegistry CRDRegistry,
+	/*eventBus EventBus,*/
+) *Router {
+{
 	return &Router{
 		registry: registry,
 		scheme:   scheme,
@@ -4939,11 +5058,14 @@ func (r *Router) route(w http.ResponseWriter, req *http.Request) {
 
 	resourceName := parts[0]
 
-	// Look up resource in registry
-	// This happens on EVERY request, which is fine because Lookup uses a read lock.
+	// Look up resource in registry This happens on EVERY request, which is fine
+	// because Lookup uses a read lock.
 	resource, ok := r.registry.Lookup(resourceName)
 	if !ok {
-		http.Error(w, fmt.Sprintf("resource %q not found", resourceName), http.StatusNotFound)
+		http.Error(w,
+			fmt.Sprintf("resource %q not found", resourceName),
+			http.StatusNotFound,
+		)
 		return
 	}
 
@@ -5121,7 +5243,11 @@ func (r *Router) deleteCRD(w http.ResponseWriter, req *http.Request) {
 	// Get the CRD to find the plural name
 	crd, exists := r.crdRegistry.GetCRD(crdName)
 	if !exists {
-		http.Error(w, fmt.Sprintf("CRD %q not found", crdName), http.StatusNotFound)
+		http.Error(
+			w,
+			fmt.Sprintf("CRD %q not found", crdName),
+			http.StatusNotFound,
+		)
 		return
 	}
 
@@ -5352,7 +5478,11 @@ userResource := resources.NewUserResource()
 if err := server.RegisterResource(userResource); err != nil {
 	log.Fatalf("Failed to register users: %v", err)
 }
-if err := server.RegisterType("users", func() any { return &resources.User{} }); err != nil {
+
+err := server.RegisterType("users", func() any {
+	return &resources.User{}
+})
+if err != nil {
 	log.Fatalf("Failed to register users type: %v", err)
 }
 // Register User schema as CRD
@@ -5391,7 +5521,9 @@ productResource := resources.NewProductResource()
 if err := server.RegisterResource(productResource); err != nil {
 	log.Fatalf("Failed to register products: %v", err)
 }
-if err := server.RegisterType("products", func() any { return &resources.Product{} }); err != nil {
+if err := server.RegisterType("products", func() any {
+	return &resources.Product{}
+}); err != nil {
 	log.Fatalf("Failed to register products type: %v", err)
 }
 // Register Product schema as CRD
@@ -5434,7 +5566,9 @@ orderResource := resources.NewOrderResource()
 if err := server.RegisterResource(orderResource); err != nil {
 	log.Fatalf("Failed to register orders: %v", err)
 }
-if err := server.RegisterType("orders", func() any { return &resources.Order{} }); err != nil {
+if err := server.RegisterType("orders", func() any {
+	return &resources.Order{}
+}); err != nil {
 	log.Fatalf("Failed to register orders type: %v", err)
 }
 // Register Order schema as CRD
@@ -5459,7 +5593,7 @@ orderCRD := &api.CRDDefinition{
 			},
 			"status": map[string]interface{}{
 				"type":        "string",
-				"description": "Order status (draft, processing, shipped, delivered)",
+				"description": "Order status",
 			},
 			"created_at": map[string]interface{}{
 				"type":        "string",
@@ -5779,7 +5913,8 @@ resources at request time.
 **Listing 11.1 — `pkg/api/router.go` (Setup)**
 ```go
 // Setup registers the generic routes.
-// These routes are created ONCE and never change, even when new resources are added.
+// These routes are created ONCE and never change, even when new resources are
+// added.
 func (r *Router) Setup() {
 	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
@@ -6040,7 +6175,8 @@ stale resource registrations pointing to code that is no longer available.
 ```go
 // pkg/plugins/interface.go
 //
-// Package plugins provides a plugin loading system for dynamic API extensibility.
+// Package plugins provides a plugin loading system for dynamic API
+// extensibility.
 //
 // Plugins are compiled Go code that register resources with the API server at
 // runtime.
@@ -6064,8 +6200,8 @@ import (
 
 // Plugin defines the interface that all plugins must implement.
 //
-// Each plugin is a separate Go package that exports a Plugin symbol.
-// When the plugin loads, the plugin manager calls Register() to add the plugin's
+// Each plugin is a separate Go package that exports a Plugin symbol. When the
+// plugin loads, the plugin manager calls Register() to add the plugin's
 // resources and types to the API server.
 type Plugin interface {
 	// Name returns the plugin name.
@@ -6285,7 +6421,10 @@ type LoadedPlugin struct {
 }
 
 // NewLoader creates a plugin loader.
-func NewLoader(pluginDir string, registry api.Registry, scheme api.Scheme) *Loader {
+func NewLoader(pluginDir string,
+	registry api.Registry,
+	scheme api.Scheme,
+) *Loader {
 	return &Loader{
 		pluginDir: pluginDir,
 		registry:  registry,
@@ -6580,8 +6719,9 @@ loader and to expose an endpoint that returns the current plugin state.
 
 **Listing 12.5 - `pkg/api/router.go` (Setup, SetPluginProvider and listPlugins)**
 ```go
-// Setup registers the generic routes.
-// These routes are created ONCE and never change, even when new resources are added.
+// Setup registers the generic routes. 
+// These routes are created ONCE and never change, even when new resources are
+// added.
 func (r *Router) Setup() {
 	// Discovery endpoints
 	r.mux.HandleFunc("/api", r.discovery)
@@ -6960,7 +7100,8 @@ support as every other resource in the system.
 // - Becomes immediately available through the API
 //
 // To use this plugin:
-// 1. Build it: go build -buildmode=plugin -o invoices.so ./plugins/invoices/main.go
+// 1. Build it: go build -buildmode=plugin -o invoices.so
+//    ./plugins/invoices/main.go
 // 2. Copy the .so file to the plugins/ directory while the server is running
 // 3. The server will automatically load it and make /api/invoices available
 //
@@ -7024,7 +7165,10 @@ func (p *InvoicePlugin) Name() string {
 }
 
 // Register adds the invoice resource to the server.
-func (p *InvoicePlugin) Register(registry api.Registry, scheme api.Scheme) error {
+func (p *InvoicePlugin) Register(
+	registry api.Registry,
+	scheme api.Scheme,
+) error {
 	log.Println("[InvoicePlugin] Registering invoice resource and type")
 
 	// Register the resource
@@ -7033,7 +7177,9 @@ func (p *InvoicePlugin) Register(registry api.Registry, scheme api.Scheme) error
 	}
 
 	// Register the type factory
-	if err := scheme.Register("invoices", func() any { return &Invoice{} }); err != nil {
+	if err := scheme.Register("invoices", func() any {
+		return &Invoice{}
+	}); err != nil {
 		return err
 	}
 
@@ -7090,6 +7236,8 @@ echo "All plugins built successfully!"
 
 ### Checkpoint
 
+Run the commands below to verify the complete plugin loading workflow.
+
 ```bash
 # Build the server and client binaries.
 mkdir bin
@@ -7103,6 +7251,7 @@ chmod +x build_plugins.sh
 # Start the API server.
 # The server must be started from the directory that contains the plugins directory
 # so that the plugin loader can discover the compiled .so files.
+
 cd bin
 ./api-server
 
@@ -7313,7 +7462,7 @@ type Event struct {
 	// Type indicates what happened: Added, Modified, or Deleted.
 	Type EventType `json:"type"`
 
-	// Resource is the name of the resource that changed (e.g., "users", "orders").
+	// Resource is the name of the resource that changed.
 	Resource string `json:"resource"`
 
 	// Object is the resource object (after the change).
@@ -7324,11 +7473,12 @@ type Event struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// Subscription represents a client's subscription to events for a specific resource.
+// Subscription represents a client's subscription to events for a specific
+// resource.
 //
-// Subscribers receive events through a channel and must actively drain the channel
-// to avoid blocking other subscribers. The EventBus implementation ensures that
-// no subscriber can block others.
+// Subscribers receive events through a channel and must actively drain the
+// channel to avoid blocking other subscribers. The EventBus implementation
+// ensures that no subscriber can block others.
 type Subscription struct {
 	// Resource is the resource name this subscription is for.
 	Resource string
@@ -7340,7 +7490,7 @@ type Subscription struct {
 	// done signals that the subscription should be closed.
 	done chan struct{}
 
-	// internal send channel (write-only) - closed by EventBus when unsubscribing.
+	// internal send channel - closed by EventBus when unsubscribing.
 	sendCh chan Event
 }
 
@@ -7574,7 +7724,11 @@ func (b *InProcessEventBus) Subscribe(resource string) *Subscription {
 	}
 
 	b.subscribers[resource] = append(b.subscribers[resource], sub)
-	log.Printf("Subscribe: %s (now %d watchers)", resource, len(b.subscribers[resource]))
+	log.Printf(
+		"Subscribe: %s (now %d watchers)",
+		resource,
+		len(b.subscribers[resource]),
+	)
 
 	return sub
 }
@@ -7597,7 +7751,11 @@ func (b *InProcessEventBus) Unsubscribe(sub *Subscription) {
 				// Remove from list
 				b.subscribers[sub.Resource] = append(subs[:i], subs[i+1:]...)
 
-				log.Printf("Unsubscribe: %s (now %d watchers)", sub.Resource, len(b.subscribers[sub.Resource]))
+				log.Printf(
+					"Unsubscribe: %s (now %d watchers)", 
+					sub.Resource, 
+					len(b.subscribers[sub.Resource]),
+				)
 				return
 			}
 		}
@@ -7605,7 +7763,8 @@ func (b *InProcessEventBus) Unsubscribe(sub *Subscription) {
 }
 
 // publishLoop runs in a goroutine and handles event distribution.
-// It ensures publishers never block by running distribution in separate goroutines.
+// It ensures publishers never block by running distribution in separate
+// goroutines..
 func (b *InProcessEventBus) publishLoop() {
 	for {
 		select {
@@ -8050,7 +8209,8 @@ Now registration also connects the resource's storage layer to the event bus:
 ```go
 // RegisterResource registers a resource at runtime.
 // This makes the resource immediately available without restarting the server.
-// Also attaches the event bus to the resource's storage so events are published.
+// Also attaches the event bus to the resource's storage so events are
+// published.
 func (s *Server) RegisterResource(resource Resource) error {
 	// Attach event bus to storage if storage is MemoryStorage
 	if ms, ok := resource.Storage().(*MemoryStorage); ok {
@@ -8105,7 +8265,12 @@ The constructor now accepts the event bus:
 
 ```go
 // NewRouter creates a new router.
-func NewRouter(registry Registry, scheme Scheme, crdRegistry CRDRegistry, eventBus EventBus) *Router {
+func NewRouter(
+	registry Registry,
+	scheme Scheme,
+	crdRegistry CRDRegistry,
+	eventBus EventBus,
+) *Router {
 	return &Router{
 		registry:    registry,
 		scheme:      scheme,
@@ -8428,7 +8593,11 @@ automatically gains watch support as soon as its storage publishes events.
 // list handles GET /api/{resource}
 // Generic handler that works for ALL resources.
 // Supports ?watch=true for streaming events instead of listing.
-func (r *Router) list(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) list(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Check if client is requesting to watch events
 	if req.URL.Query().Get("watch") == "true" {
 		r.watch(w, req, resource)
@@ -8486,7 +8655,11 @@ remain open for hours.
 // 2. Handler subscribes to the event bus for this resource
 // 3. Events are streamed to client as they occur
 // 4. No polling needed - truly event-driven
-func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resource) {
+func (r *Router) watch(
+	w http.ResponseWriter,
+	req *http.Request,
+	resource Resource,
+) {
 	// Check if client supports Server-Sent Events (requires HTTP/1.1)
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -8530,7 +8703,8 @@ func (r *Router) watch(w http.ResponseWriter, req *http.Request, resource Resour
 
 		case <-keepAliveTicker.C:
 			// Send keep-alive comment to prevent timeout
-			// SSE spec: lines starting with ':' are comments and ignored by clients
+			// SSE spec: lines starting with':' are comments and
+			// ignored by clients
 			fmt.Fprintf(w, ":keep-alive\n\n")
 			flusher.Flush()
 
@@ -8833,8 +9007,9 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 				case events <- event:
 				case <-time.After(100 * time.Millisecond):
 					// Event channel full, drop and log
+					err := fmt.Errorf("event channel full, dropping event")
 					select {
-					case errors <- fmt.Errorf("event channel full, dropping event"):
+					case errors <- err:
 					default:
 					}
 				}
@@ -8854,10 +9029,10 @@ func (c *Client) Watch(resource string) (*WatchResult, error) {
 
 ```
 
-With the client implementation complete, the watch functionality is now available
-to any program using the client package. The CLI does not need special knowledge
-of SSE or the event bus. It simply receives a stream of typed events and decides
-how to present or process them.
+With the client implementation complete, the watch functionality is now
+available to any program using the client package. The CLI does not need special
+knowledge of SSE or the event bus. It simply receives a stream of typed events
+and decides how to present or process them.
 
 
 ### Client side: watch command
@@ -9174,11 +9349,12 @@ every controller to stop gracefully.
 ```go
 // pkg/controllers/controller.go
 //
-// This file defines the Controller interface, which represents a reconciliation controller
-// in the dynamic API framework. Controllers are responsible for watching events related to
-// specific resources and performing business logic to reconcile the current state with the
-// desired state. This decouples business logic from HTTP request handling, allowing controllers
-// to operate independently of the API server's request lifecycle.
+// This file defines the Controller interface, which represents a reconciliation
+// controller in the dynamic API framework. Controllers are responsible for
+// watching events related to specific resources and performing business logic
+// to reconcile the current state with the desired state. This decouples
+// business logic from HTTP request handling, allowing controllers to operate
+// independently of the API server's request lifecycle.
 
 package controllers
 
@@ -9408,7 +9584,7 @@ import (
 // OrderController watches order events and performs reconciliation.
 //
 // Business Logic:
-// - When an order is ADDED: Initialize order state and set status to "processing"
+// - When an order is ADDED: Calculate totals, set status to "processing"
 // - When an order is MODIFIED: Log the change
 // - When an order is DELETED: Log the deletion
 //
@@ -9430,7 +9606,10 @@ type OrderController struct {
 
 // NewOrderController creates a new order controller.
 // The registry is used to update orders during reconciliation.
-func NewOrderController(eventBus api.EventBus, registry api.Registry) *OrderController {
+func NewOrderController(
+	eventBus api.EventBus,
+	registry api.Registry,
+) *OrderController {
 	return &OrderController{
 		baseController: baseController{
 			name:     "OrderController",
@@ -9468,7 +9647,10 @@ func (oc *OrderController) Reconcile(event api.Event) error {
 // reconcileAdded handles newly created orders.
 // Initializes order state and sets status to "processing"..
 func (oc *OrderController) reconcileAdded(event api.Event) error {
-	log.Printf("[%s] NEW ORDER - calculating totals and setting status", oc.Name())
+	log.Printf(
+		"[%s] NEW ORDER - calculating totals and setting status",
+		oc.Name(),
+	)
 
 	// Parse the order object
 	orderData, err := json.Marshal(event.Object)
@@ -9493,8 +9675,12 @@ func (oc *OrderController) reconcileAdded(event api.Event) error {
 		order["total"] = 0
 	}
 
-	log.Printf("[%s] Order %s: status=processing, total=$%.2f", oc.Name(), id, order["total"])
-
+	log.Printf(
+		"[%s] Order %s: status=processing, total=$%.2f",
+		oc.Name(),
+		id,
+		order["total"],
+	)
 	// Update the order in storage
 	// This will generate a MODIFIED event which other watchers will see
 	resource, ok := oc.registry.Lookup("orders")
@@ -9519,7 +9705,12 @@ func (oc *OrderController) reconcileModified(event api.Event) error {
 	var order map[string]interface{}
 	json.Unmarshal(orderData, &order)
 
-	log.Printf("[%s] Order %s MODIFIED (status=%s)", oc.Name(), order["id"], order["status"])
+	log.Printf(
+		"[%s] Order %s MODIFIED (status=%s)", 
+		oc.Name(), 
+		order["id"], 
+		order["status"],
+	)
 	return nil
 }
 
@@ -9732,7 +9923,10 @@ type baseController struct {
 
 // runLoop runs the main event processing loop.
 // Calls reconcile() for each event.
-func (bc *baseController) runLoop(ctx context.Context, reconcile func(event api.Event) error) error {
+func (bc *baseController) runLoop(
+	ctx context.Context,
+	reconcile func(event api.Event) error,
+) error {
 	// Subscribe to events
 	sub := bc.eventBus.Subscribe(bc.resource)
 	defer bc.eventBus.Unsubscribe(sub)
@@ -9743,7 +9937,12 @@ func (bc *baseController) runLoop(ctx context.Context, reconcile func(event api.
 	for {
 		select {
 		case event := <-sub.Events:
-			log.Printf("[%s] received %s event for %s", bc.name, event.Type, event.Resource)
+			log.Printf(
+				"[%s] received %s event for %s",
+				bc.name,
+				event.Type,
+				event.Resource,
+			)
 			if err := reconcile(event); err != nil {
 				log.Printf("[%s] reconcile error: %v", bc.name, err)
 			}
@@ -9849,7 +10048,9 @@ serve go routine.
 	
 	// Register the order controller
 	// It will watch for order events and perform reconciliation
-	if err := manager.Register(controllers.NewOrderController(server.EventBus(), server.Registry())); err != nil {
+	if err := manager.Register(
+		controllers.NewOrderController(server.EventBus(), server.Registry()),
+	); err != nil {
 		log.Printf("Warning: failed to register OrderController: %v", err)
 	}
 	
@@ -9967,7 +10168,8 @@ Run the server and client.
 ./bin/apictl create -f examples/order-1.json
 ```
 
-When the order is created, the watch client receives the first event immediately:
+When the order is created, the watch client receives the first event
+immediately:
 
 ```text
 EVENT: ADDED
@@ -10021,7 +10223,8 @@ through the registry and delegates operations through common interfaces. New
 capabilities can be added at runtime without changing the core HTTP handling
 code.
 
-The foundation of this design is a clean separation between the major subsystems:
+The foundation of this design is a clean separation between the major
+subsystems:
 
 * The **registry** answers the question: "What resources exist?"
 * The **scheme** answers the question: "How do I create objects of those types?"
@@ -10852,8 +11055,8 @@ func (s *SQLiteStorage) List() ([]any, error) {
 	return result, rows.Err()
 }
 
-// Get retrieves an item by ID for the associated resource. It queries the SQLite
-// database, unmarshals the data into a Go object, and returns it.
+// Get retrieves an item by ID for the associated resource. It queries the
+// SQLite database, unmarshals the data into a Go object, and returns it.
 func (s *SQLiteStorage) Get(id string) (any, error) {
 	var data []byte
 

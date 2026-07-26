@@ -47,7 +47,11 @@ func main() {
 	if err := server.RegisterResource(userResource); err != nil {
 		log.Fatalf("Failed to register users: %v", err)
 	}
-	if err := server.RegisterType("users", func() any { return &resources.User{} }); err != nil {
+
+	err := server.RegisterType("users", func() any {
+		return &resources.User{}
+	})
+	if err != nil {
 		log.Fatalf("Failed to register users type: %v", err)
 	}
 	// Register User schema as CRD
@@ -86,7 +90,9 @@ func main() {
 	if err := server.RegisterResource(productResource); err != nil {
 		log.Fatalf("Failed to register products: %v", err)
 	}
-	if err := server.RegisterType("products", func() any { return &resources.Product{} }); err != nil {
+	if err := server.RegisterType("products", func() any {
+		return &resources.Product{}
+	}); err != nil {
 		log.Fatalf("Failed to register products type: %v", err)
 	}
 	// Register Product schema as CRD
@@ -129,7 +135,9 @@ func main() {
 	if err := server.RegisterResource(orderResource); err != nil {
 		log.Fatalf("Failed to register orders: %v", err)
 	}
-	if err := server.RegisterType("orders", func() any { return &resources.Order{} }); err != nil {
+	if err := server.RegisterType("orders", func() any {
+		return &resources.Order{}
+	}); err != nil {
 		log.Fatalf("Failed to register orders type: %v", err)
 	}
 	// Register Order schema as CRD
@@ -154,7 +162,7 @@ func main() {
 				},
 				"status": map[string]interface{}{
 					"type":        "string",
-					"description": "Order status (draft, processing, shipped, delivered)",
+					"description": "Order status",
 				},
 				"created_at": map[string]interface{}{
 					"type":        "string",
@@ -189,7 +197,9 @@ func main() {
 
 	// Register the order controller
 	// It will watch for order events and perform reconciliation
-	if err := manager.Register(controllers.NewOrderController(server.EventBus(), server.Registry())); err != nil {
+	if err := manager.Register(
+		controllers.NewOrderController(server.EventBus(), server.Registry()),
+	); err != nil {
 		log.Printf("Warning: failed to register OrderController: %v", err)
 	}
 
