@@ -83,6 +83,7 @@ scratch.
 **Appendices**
 - [Appendix A: Complete File Map](#appendix-a-complete-file-map)
 - [Appendix B: The Full Demo Script](#appendix-b-the-full-demo-script)
+- [Appendix C: Storage Factory [DRAFT]](#appendix-c-storage-factory-draft)
 
 ---
 
